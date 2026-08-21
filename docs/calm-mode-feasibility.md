@@ -21,15 +21,16 @@ This host tracks Pi latest, so the version the evidence is pinned to moves; the 
 
 ### Built-in tool override constraints
 
-[`calm.md`](calm.md#pi-compatibility) owns the current user-facing collision behavior and limitation.
+[`calm.md`](calm.md#pi-compatibility) owns the current user-facing compatibility behavior and limitation.
 Inspection of Pi 0.80.10 and 0.82.0 established that extensions override a built-in tool by registering the same name, the first registered extension wins the complete `ToolDefinition` without merging, and Pi exposes no unregister operation.
-Pi loads project-local extensions before global or CLI-configured extensions, so Firstmate's tracked Calm extension previously won those collisions even when its persisted preference was off.
-The losing definition's execution and render functions are both discarded, so unconditionally registering Calm's wrappers would replace another extension's same-named tool rather than changing presentation alone.
+Pi loads project-local extensions before global or CLI-configured extensions, so Firstmate's tracked Calm extension previously collided with global renderer extensions such as `pi-tool-display` whenever Calm's persisted preference was on.
+The losing definition's execution and render functions are both discarded, so Calm no longer uses same-name tool registration for presentation.
 
-Pi's `getAllTools()` exposes tool metadata and source identity but not the executable or rendering functions needed to wrap another extension's full definition.
-It is also usable for reliable collision detection only after extension binding, which makes it suitable for the first same-session `/calm` activation but not for synchronous extension loading.
-Deferring registration to `session_start` is not an equivalent path: Pi constructs restored tool rows from an earlier tool-registry snapshot during reload, new-session, fork, and session switching, so those rows retain the definition captured before `session_start`.
-`tests/fm-calm-pi-extension.test.sh` covers the resulting split contract: no load-time claims while Calm is off, synchronous claims while it is already on, collision-checked first activation with a warning, preservation of a contested tool's execution, and the non-retroactive bound for rows rendered before first activation.
+Pi 0.84.2 still exports `ToolExecutionComponent`, whose `render(width)` method receives the row-local state that has already materialized any separate image components.
+Calm now patches that render seam, checks the live presentation policy, and returns zero rows for the controlled built-in tool names while leaving any image components visible.
+Because this happens after Pi has selected the active tool definition, Calm preserves Pi's built-ins and any renderer or behavior extension that owns the same tool name.
+It also applies retroactively to rows already on screen because every row consults the live render patch on redraw.
+`tests/fm-calm-pi-extension.test.sh` covers the current contract: no built-in tool registration with Calm off or on, preservation of a foreign-owned `bash` tool's execution, hiding of both pre-activation and post-activation rows, and restoration when Calm turns off.
 
 ## Pi 0.81.1 end-to-end reproduction
 
@@ -367,7 +368,7 @@ $ pi --version
 $ tests/fm-calm-pi-extension.test.sh
 ok - Pi calm resolves its persistent home independently of Pi's launch directory
 ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
-ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing presentation APIs degrade only their Calm adapters with clear skip reasons, while the rest of Calm still registers
 ok - missing Pi presentation class exports reach the independent adapter degradation path
 ok - Pi calm centralizes transcript visibility, preserves execution/export data, keeps Pi's stock working row visible while no run is active, and persists its choice across session starts
 ok - Pi operational follow-up E2E processes exact user-role notifications once while Calm hides current and adjacent rows, Calm off and absent render them, and restart preserves semantics
@@ -494,10 +495,10 @@ not ok - Calm's post-export repaint overwrote Pi's export confirmation (missing:
 $ tests/fm-calm-pi-extension.test.sh
 ok - Pi calm resolves its persistent home independently of Pi's launch directory
 ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
-ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing presentation APIs degrade only their Calm adapters with clear skip reasons, while the rest of Calm still registers
 ok - missing Pi presentation class exports reach the independent adapter degradation path
-ok - Calm registers none of its 7 built-in tool wrappers at load while config/calm is off, and all 7 synchronously at load while config/calm is on
-ok - Calm's first same-session /calm activation claims every uncontested built-in, leaves a foreign bash tool fully intact and callable, warns prominently and logs the contested name, and only rows constructed before that activation - the documented bound - fail to retroactively collapse
+ok - Calm registers no built-in tool overrides at load whether config/calm is off or on
+ok - Calm's /calm activation hides built-in and foreign-owned same-name tool rows without registering built-in tool overrides or changing foreign tool execution
 ok - Pi calm centralizes transcript visibility, preserves execution/export data, keeps Pi's stock working row visible while no run is active, and persists its choice across session starts
 ok - Pi calm on collapses mid-turn assistant working notes to zero height while Calm off keeps them, leaves streaming, truncated-final, and genuine final replies untouched, never mutates the messages, ignores every /calm argument, and restores a legacy persisted max as ordinary Calm on
 ok - Pi operational follow-up E2E processes exact user-role notifications once while Calm hides current and adjacent rows, Calm off and absent render them, and restart preserves semantics
