@@ -1,0 +1,25 @@
+{
+  "worktree": {
+    "setup": [
+      "test -f AGENTS.md",
+      "test -x bin/fm-session-start.sh"
+    ],
+    "teardown": "true"
+  },
+  "scripts": {
+    "git-status": {
+      "command": "git status --short --branch"
+    }
+  },
+  "metadataGeneration": {
+    "branchName": {
+      "instructions": "Use fm/<short-kebab-task>. Keep it lowercase and specific."
+    },
+    "commitMessage": {
+      "instructions": "Use an imperative subject, do not add agent co-authors, and describe the Firstmate behavior or safety contract changed."
+    },
+    "pullRequest": {
+      "instructions": "Include Summary, Validation, and Risk sections."
+    }
+  }
+}
