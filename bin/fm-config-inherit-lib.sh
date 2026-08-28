@@ -5,11 +5,12 @@
 # (e.g. primary config/crew-dispatch.json makes a secondmate use the same dispatch
 # profile rules, primary config/crew-harness=codex makes a secondmate's crewmates
 # spawn on codex too, primary config/backlog-backend=manual makes that home
-# hand-edit backlog files too, primary config/backend pins that home's local
-# runtime-backend default for future spawns, primary config/startup-memory-budget
-# bounds that home's startup-memory curation, and primary
-# config/herdr-presentation-spaces carries the same Herdr presentation-projection
-# preference - an absent primary file and an absent destination file both mean
+# hand-edit backlog files too,
+# primary config/backend pins that home's local runtime-backend default for
+# future spawns, primary config/startup-memory-budget bounds that home's startup-
+# memory curation, and primary config/herdr-presentation-spaces carries the same
+# Herdr presentation-projection preference - an absent primary file and an
+# absent destination file both mean
 # the same unconfigured default, so the generic absence mirror below converges
 # a secondmate without deciding the release-dependent floor; explicit "on" and
 # "off" preferences propagate as files. Primary
