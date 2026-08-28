@@ -93,6 +93,34 @@ test_first_copy_readonly_and_local_files_preserved() {
   pass "shared captain first copy converges, is read-only, and preserves local captain/learnings files"
 }
 
+test_project_context_links_inherit_like_other_local_config() {
+  local rec primary second report out context_root
+  rec=$(new_home_pair project-context-links)
+  primary=${rec%%|*}
+  second=${rec#*|}
+  mkdir -p "$primary/config" "$second/config"
+  context_root="$TMP_ROOT/homelab-context-root"
+  mkdir -p "$context_root/.pi/skills"
+  printf '# Parent context\n' > "$context_root/AGENTS.md"
+  printf 'gitops\t%s\n' "$context_root" > "$primary/config/project-context-links"
+  report="$TMP_ROOT/project-context-links.report"
+
+  out=$(FM_CONFIG_INHERIT_REPORT="$report" propagate_secondmate_inheritance "$primary" "$second")
+
+  [ -z "$out" ] || fail "project-context-links propagation should stay quiet: $out"
+  cmp -s "$primary/config/project-context-links" "$second/config/project-context-links" \
+    || fail "project-context-links did not converge into the secondmate home"
+  assert_grep $'project-context-links\tpushed\t' "$report" \
+    "project-context-links first copy should report pushed"
+
+  : > "$report"
+  out=$(FM_CONFIG_INHERIT_REPORT="$report" propagate_secondmate_inheritance "$primary" "$second")
+  [ -z "$out" ] || fail "repeated project-context-links convergence should stay quiet: $out"
+  assert_grep $'project-context-links\tunchanged\t' "$report" \
+    "project-context-links repeated convergence should report unchanged"
+  pass "project-context-links inherits as primary-local config"
+}
+
 test_drift_quarantine_collision_and_repeated_convergence() {
   local rec primary second fakebin hash collision report out diag qpath qcount
   rec=$(new_home_pair drift)
@@ -393,6 +421,7 @@ EOF
 }
 
 test_first_copy_readonly_and_local_files_preserved
+test_project_context_links_inherit_like_other_local_config
 test_drift_quarantine_collision_and_repeated_convergence
 test_missing_source_mirrors_absence_without_losing_local_bytes
 test_unsafe_artifacts_and_failure_restore_readonly_mode
