@@ -69,6 +69,10 @@
 # Scaffolds carry no role scope: fm-spawn.sh supplies fm_brief_worker_role from
 # fm-dod-lib.sh to every ship/scout launch brief, so this file never becomes a
 # second owner of a contract that must stay current across relaunches.
+# When config/project-context-links maps this repo name to an authoritative
+# external context root, ship and scout briefs inject that pointer block through
+# bin/fm-project-context.sh before Setup so isolated nested-repo worktrees load
+# the right AGENTS.md and matching subsystem skill before work.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -355,6 +359,14 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
 
+PROJECT_CONTEXT_SECTION=$("$SCRIPT_DIR/fm-project-context.sh" "$REPO") || exit 1
+PROJECT_CONTEXT_SECTION=${PROJECT_CONTEXT_SECTION%$'\n'}
+BRIEF_PREAMBLE=$HERDR_SECTION
+if [ -n "$PROJECT_CONTEXT_SECTION" ]; then
+  BRIEF_PREAMBLE=$PROJECT_CONTEXT_SECTION
+  BRIEF_PREAMBLE="$BRIEF_PREAMBLE"$'\n\n'"$HERDR_SECTION"
+fi
+
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, you may host the Lavish review loop yourself (poll, revise, re-serve, staying alive) instead of handing it back to firstmate.'
@@ -366,7 +378,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 $TASK_SECTION
 
-$HERDR_SECTION
+$BRIEF_PREAMBLE
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
@@ -452,7 +464,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 $TASK_SECTION
 
-$HERDR_SECTION
+$BRIEF_PREAMBLE
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.

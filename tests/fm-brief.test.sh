@@ -441,6 +441,98 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+write_external_project_context_fixture() {
+  local root=$1
+  mkdir -p "$root/.pi/skills/flux-gitops"
+  printf '# Parent context\n' > "$root/AGENTS.md"
+  printf '# Troubleshooting\n' > "$root/Homelab_Reference_and_Troubleshooting_Guide.md"
+}
+
+test_matching_project_context_is_injected_into_ship_and_scout_briefs() {
+  local home context_root ship scout
+  home="$TMP_ROOT/project-context-home"
+  context_root="$TMP_ROOT/homelab parent context"
+  mkdir -p "$home/config" "$home/data"
+  write_external_project_context_fixture "$context_root"
+  printf 'gitops\t%s\n' "$context_root" > "$home/config/project-context-links"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-ship gitops --mode no-mistakes >/dev/null 2>&1
+  ship="$home/data/ctx-ship/brief.md"
+  assert_grep '# External project context' "$ship" \
+    "matching ship brief did not gain the external project-context section"
+  assert_grep "\`$context_root/AGENTS.md\`" "$ship" \
+    "matching ship brief did not point at the parent AGENTS.md"
+  assert_grep "\`$context_root/.pi/skills/\`" "$ship" \
+    "matching ship brief did not point at the parent skill directory"
+  assert_grep 'Load the matching subsystem skill from' "$ship" \
+    "matching ship brief did not require the matching subsystem skill"
+  assert_grep "\`$context_root/Homelab_Reference_and_Troubleshooting_Guide.md\`" "$ship" \
+    "matching ship brief did not point at the troubleshooting guide"
+  assert_grep "Keep the repo's own \`README.md\` and project docs in this worktree authoritative" "$ship" \
+    "matching ship brief did not preserve repo-local docs as authoritative"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-scout gitops --scout >/dev/null 2>&1
+  scout="$home/data/ctx-scout/brief.md"
+  assert_grep '# External project context' "$scout" \
+    "matching scout brief did not gain the external project-context section"
+  assert_grep "\`$context_root/AGENTS.md\`" "$scout" \
+    "matching scout brief did not point at the parent AGENTS.md"
+  assert_grep 'Load the matching subsystem skill from' "$scout" \
+    "matching scout brief did not require the matching subsystem skill"
+  pass "fm-brief.sh: matching external project context is injected into ship and scout briefs"
+}
+
+test_unconfigured_project_context_keeps_brief_bytes_unchanged() {
+  local home brief baseline
+  home="$TMP_ROOT/project-context-unchanged-home"
+  mkdir -p "$home/config" "$home/data"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-unchanged sample-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/ctx-unchanged/brief.md"
+  baseline="$home/data/ctx-unchanged/brief.baseline"
+  cp "$brief" "$baseline"
+  rm -f "$brief"
+
+  printf 'gitops\t%s\n' "$TMP_ROOT/unmatched-context-root" > "$home/config/project-context-links"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-unchanged sample-proj --mode no-mistakes >/dev/null 2>&1
+  cmp -s "$baseline" "$brief" \
+    || fail "an unmatched project-context mapping changed ship-brief bytes"
+  pass "fm-brief.sh: an unmatched external project-context mapping leaves other briefs unchanged"
+}
+
+test_unrelated_malformed_project_context_is_ignored() {
+  local home brief baseline
+  home="$TMP_ROOT/project-context-malformed-unrelated-home"
+  mkdir -p "$home/config" "$home/data"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-malformed sample-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/ctx-malformed/brief.md"
+  baseline="$home/data/ctx-malformed/brief.baseline"
+  cp "$brief" "$baseline"
+  rm -f "$brief"
+
+  printf '%s\n' 'unrelated malformed row' 'other-project\trelative/root' > "$home/config/project-context-links"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-malformed sample-proj --mode no-mistakes >/dev/null 2>&1
+  cmp -s "$baseline" "$brief" \
+    || fail "unrelated malformed project-context rows changed an unconfigured brief"
+  pass "fm-brief.sh: unrelated malformed project-context rows are ignored"
+}
+
+test_duplicate_matching_project_context_is_rejected() {
+  local home context_root out rc
+  home="$TMP_ROOT/project-context-duplicate-home"
+  context_root="$TMP_ROOT/duplicate-context-root"
+  mkdir -p "$home/config" "$home/data"
+  write_external_project_context_fixture "$context_root"
+  printf 'gitops\t%s\ngitops\t%s\n' "$context_root" "$context_root" > "$home/config/project-context-links"
+
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-duplicate gitops --mode no-mistakes 2>&1); rc=$?
+  [ "$rc" -ne 0 ] || fail "duplicate matching project-context rows were accepted"
+  assert_contains "$out" 'duplicate project entry for gitops' \
+    "duplicate matching project-context failure was not explicit"
+  pass "fm-brief.sh: duplicate matching project-context rows are rejected"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -913,6 +1005,10 @@ test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ask_user_escalation_format
 test_ship_project_memory_wording
+test_matching_project_context_is_injected_into_ship_and_scout_briefs
+test_unconfigured_project_context_keeps_brief_bytes_unchanged
+test_unrelated_malformed_project_context_is_ignored
+test_duplicate_matching_project_context_is_rejected
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout
