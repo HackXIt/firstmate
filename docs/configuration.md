@@ -127,6 +127,27 @@ A Secondmate on a remote route is covered the same way: the primary resolves and
 The presence flag is session-scoped enablement, so it transfers at launch and is left unchanged by live convergence into a running home.
 See [`trace-context.md`](trace-context.md) for carrier semantics, supported routes, the manual fleet-restart requirement, the session boundary, and safety limits; `bin/fm-trace-context-lib.sh`'s header owns the exact mechanics, and [`verification/trace-context.md`](verification/trace-context.md) records repeatable evidence.
 
+## Project context links (config/project-context-links)
+
+`config/project-context-links` is an optional local, gitignored file mapping a resolved project name to an absolute authoritative root outside that dispatched repository.
+Use it when isolated task worktrees cannot discover required parent or sibling context by ancestry, such as a nested GitOps repository whose authoritative operational memory lives in its parent homelab checkout.
+Each non-empty, non-comment line is `<project-name><TAB><absolute-root>`.
+`<project-name>` is the same plain name Firstmate resolved at intake and passed to `fm-brief.sh`.
+`<absolute-root>` must resolve to a directory containing `AGENTS.md` and `.pi/skills/`.
+When `bin/fm-project-context.sh <project-name>` finds a match, it prints the pointer block Firstmate should read before scoping, answering, or briefing that project's work.
+`fm-brief.sh` includes the same block automatically in ship and scout briefs for the matching project.
+That block points at the matched root's `AGENTS.md`, requires loading the matching subsystem skill from `.pi/skills/` before work, includes `Homelab_Reference_and_Troubleshooting_Guide.md` when that file exists, and keeps the dispatched repository's own `README.md` and docs authoritative for repo-local details.
+Unconfigured projects print nothing and keep their briefs unchanged.
+A malformed matching line, a non-absolute root, a duplicate matching project entry, or a matched root missing `AGENTS.md` or `.pi/skills/` is rejected rather than silently dropping the pointer.
+The mapping is local to each home because absolute roots are placement-specific; configure it separately in every primary or secondmate home that dispatches the project.
+`bin/fm-project-context.sh`'s header owns the exact output mechanics.
+
+Activate this home's uncommitted homelab mapping without disturbing other project entries:
+
+```sh
+mkdir -p config && tmp=$(mktemp config/project-context-links.XXXXXX) && { [ ! -f config/project-context-links ] || awk -F '\t' '$1 != "gitops"' config/project-context-links; printf 'gitops\t%s\n' '/home/hackxit/git-stash/mirror-forks/homelab'; } > "$tmp" && chmod 600 "$tmp" && mv "$tmp" config/project-context-links
+```
+
 ## Gate defaults (.no-mistakes.yaml)
 
 The tracked `.no-mistakes.yaml` sets `test.evidence.store_in_repo: true` and pins `commands.lint` to `bin/fm-lint.sh` so local lint matches CI.

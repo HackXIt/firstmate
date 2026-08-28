@@ -54,6 +54,10 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
+# When config/project-context-links maps this repo name to an authoritative
+# external context root, ship and scout briefs inject that pointer block through
+# bin/fm-project-context.sh before Setup so isolated nested-repo worktrees load
+# the right AGENTS.md and matching subsystem skill before work.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -298,6 +302,14 @@ EOF
 HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
+PROJECT_CONTEXT_SECTION=$("$SCRIPT_DIR/fm-project-context.sh" "$REPO") || exit 1
+PROJECT_CONTEXT_SECTION=${PROJECT_CONTEXT_SECTION%$'\n'}
+BRIEF_PREAMBLE=$HERDR_SECTION
+if [ -n "$PROJECT_CONTEXT_SECTION" ]; then
+  BRIEF_PREAMBLE=$PROJECT_CONTEXT_SECTION
+  BRIEF_PREAMBLE="$BRIEF_PREAMBLE"$'\n\n'"$HERDR_SECTION"
+fi
+
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -305,7 +317,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 # Task
 {TASK}
 
-$HERDR_SECTION
+$BRIEF_PREAMBLE
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
@@ -416,7 +428,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 # Task
 {TASK}
 
-$HERDR_SECTION
+$BRIEF_PREAMBLE
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
