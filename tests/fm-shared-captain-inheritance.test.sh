@@ -93,6 +93,29 @@ test_first_copy_readonly_and_local_files_preserved() {
   pass "shared captain first copy converges, is read-only, and preserves local captain/learnings files"
 }
 
+test_project_context_links_remain_local_to_each_home() {
+  local rec primary second report out before
+  rec=$(new_home_pair project-context-links-local)
+  primary=${rec%%|*}
+  second=${rec#*|}
+  mkdir -p "$primary/config" "$second/config"
+  printf 'gitops\t/primary/homelab\n' > "$primary/config/project-context-links"
+  printf 'gitops\t/secondmate/homelab\n' > "$second/config/project-context-links"
+  before="$TMP_ROOT/project-context-links.before"
+  cp "$second/config/project-context-links" "$before"
+  report="$TMP_ROOT/project-context-links-local.report"
+
+  out=$(FM_CONFIG_INHERIT_REPORT="$report" propagate_secondmate_inheritance "$primary" "$second")
+
+  [ -z "$out" ] || fail "inheritance with home-local project context should stay quiet: $out"
+  cmp -s "$before" "$second/config/project-context-links" \
+    || fail "inheritance replaced the secondmate's home-local project-context mapping"
+  if [ -f "$report" ] && grep -q $'^project-context-links\t' "$report"; then
+    fail "home-local project-context mapping appeared in the inheritance report"
+  fi
+  pass "project-context-links remains local to each home"
+}
+
 test_drift_quarantine_collision_and_repeated_convergence() {
   local rec primary second fakebin hash collision report out diag qpath qcount
   rec=$(new_home_pair drift)
@@ -393,6 +416,7 @@ EOF
 }
 
 test_first_copy_readonly_and_local_files_preserved
+test_project_context_links_remain_local_to_each_home
 test_drift_quarantine_collision_and_repeated_convergence
 test_missing_source_mirrors_absence_without_losing_local_bytes
 test_unsafe_artifacts_and_failure_restore_readonly_mode
