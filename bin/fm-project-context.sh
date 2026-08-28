@@ -70,20 +70,17 @@ while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     ''|'#'*) continue ;;
   esac
+  project=${line%%$'\t'*}
+  [ "$project" = "$PROJECT" ] || continue
   case "$line" in
-    *$'\t'*)
-      project=${line%%$'\t'*}
-      root=${line#*$'\t'}
-      ;;
+    *$'\t'*) root=${line#*$'\t'} ;;
     *) die "$LINKS_FILE:$line_no: expected <project-name><TAB><absolute-root>" ;;
   esac
-  [ -n "$project" ] || die "$LINKS_FILE:$line_no: project name is empty"
   [ -n "$root" ] || die "$LINKS_FILE:$line_no: absolute root is empty"
   case "$root" in
     /*) ;;
     *) die "$LINKS_FILE:$line_no: root for $project must be absolute: $root" ;;
   esac
-  [ "$project" = "$PROJECT" ] || continue
   [ -z "$match_root" ] || die "$LINKS_FILE:$line_no: duplicate project entry for $PROJECT"
   match_root=$root
 done < "$LINKS_FILE"

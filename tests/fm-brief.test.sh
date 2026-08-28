@@ -430,6 +430,39 @@ test_unconfigured_project_context_keeps_brief_bytes_unchanged() {
   pass "fm-brief.sh: an unmatched external project-context mapping leaves other briefs unchanged"
 }
 
+test_unrelated_malformed_project_context_is_ignored() {
+  local home brief baseline
+  home="$TMP_ROOT/project-context-malformed-unrelated-home"
+  mkdir -p "$home/config" "$home/data"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-malformed sample-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/ctx-malformed/brief.md"
+  baseline="$home/data/ctx-malformed/brief.baseline"
+  cp "$brief" "$baseline"
+  rm -f "$brief"
+
+  printf '%s\n' 'unrelated malformed row' 'other-project\trelative/root' > "$home/config/project-context-links"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-malformed sample-proj --mode no-mistakes >/dev/null 2>&1
+  cmp -s "$baseline" "$brief" \
+    || fail "unrelated malformed project-context rows changed an unconfigured brief"
+  pass "fm-brief.sh: unrelated malformed project-context rows are ignored"
+}
+
+test_duplicate_matching_project_context_is_rejected() {
+  local home context_root out rc
+  home="$TMP_ROOT/project-context-duplicate-home"
+  context_root="$TMP_ROOT/duplicate-context-root"
+  mkdir -p "$home/config" "$home/data"
+  write_external_project_context_fixture "$context_root"
+  printf 'gitops\t%s\ngitops\t%s\n' "$context_root" "$context_root" > "$home/config/project-context-links"
+
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ctx-duplicate gitops --mode no-mistakes 2>&1); rc=$?
+  [ "$rc" -ne 0 ] || fail "duplicate matching project-context rows were accepted"
+  assert_contains "$out" 'duplicate project entry for gitops' \
+    "duplicate matching project-context failure was not explicit"
+  pass "fm-brief.sh: duplicate matching project-context rows are rejected"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -783,6 +816,8 @@ test_no_mistakes_dod_wording
 test_ship_project_memory_wording
 test_matching_project_context_is_injected_into_ship_and_scout_briefs
 test_unconfigured_project_context_keeps_brief_bytes_unchanged
+test_unrelated_malformed_project_context_is_ignored
+test_duplicate_matching_project_context_is_rejected
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout
