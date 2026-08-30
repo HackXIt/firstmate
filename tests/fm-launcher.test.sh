@@ -200,6 +200,37 @@ unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   rm -rf "$tmp"
 }
 
+unit_shasum_fallback_generates_stable_topic_key() {
+  local tmp fakebin log out status expected_home
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-shasum.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  without_herdr_fakebin "$fakebin"
+  ln -s /usr/bin/bash "$fakebin/bash"
+  ln -s /usr/bin/env "$fakebin/env"
+  ln -s /usr/bin/dirname "$fakebin/dirname"
+  ln -s /usr/bin/mkdir "$fakebin/mkdir"
+  ln -s /usr/bin/sed "$fakebin/sed"
+  ln -s /usr/bin/tr "$fakebin/tr"
+  cat > "$fakebin/shasum" <<'FAKE_SHASUM'
+#!/usr/bin/env bash
+[ "${1:-}" = -a ] && [ "${2:-}" = 256 ] || exit 64
+/usr/bin/sha256sum
+FAKE_SHASUM
+  chmod +x "$fakebin/shasum"
+  out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" 'Road Map' </dev/null 2>&1)
+  status=$?
+  expected_home="$tmp/home/.local/share/firstmate/road-map--baf493d9991d"
+  if [ "$status" -eq 0 ] \
+    && [ -d "$expected_home/config" ] \
+    && grep -F $'PI_ENV\tFM_HOME='"$expected_home" "$log" >/dev/null; then
+    pass 'shasum fallback: non-normalized topic launches with stable isolated key'
+  else
+    fail "shasum fallback: expected stable launch, status=$status output=$out log=$(cat "$log" 2>/dev/null || true)"
+  fi
+  rm -rf "$tmp"
+}
+
 unit_fm_alias_delegates_to_launcher() {
   local tmp fakebin log out status
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-alias.XXXXXX")
@@ -251,6 +282,7 @@ unit_topic_slug_home_and_command
 unit_inside_herdr_uses_current_session_without_nested_attach
 unit_inactive_herdr_marker_attaches_topic_session
 unit_without_herdr_falls_back_to_pi_without_wrapping_pi
+unit_shasum_fallback_generates_stable_topic_key
 unit_fm_alias_delegates_to_launcher
 unit_colliding_slugs_get_isolated_topic_keys
 
