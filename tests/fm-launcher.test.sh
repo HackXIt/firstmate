@@ -114,9 +114,9 @@ unit_symlink_install_resolves_shared_checkout() {
   else
     fail "symlink install: expected success, status=$status output=$out"
   fi
-  expected_home="$tmp/home/.local/share/firstmate/symlink-topic--11b05755eb17"
+  expected_home="$tmp/home/.local/share/firstmate/symlink-topic__11b05755eb17"
   out=$(cat "$log" 2>/dev/null || true)
-  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-symlink-topic--11b05755eb17' 'symlink install: Herdr workspace cwd uses shared checkout, not install directory'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-symlink-topic__11b05755eb17' 'symlink install: Herdr workspace cwd uses shared checkout, not install directory'
   assert_contains "$out" "FM_ROOT_OVERRIDE='$ROOT'" 'symlink install: command exports shared checkout as Firstmate root'
   assert_contains "$out" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts'" 'symlink install: extension paths use shared checkout'
   rm -rf "$tmp"
@@ -141,20 +141,20 @@ unit_topic_slug_home_and_command() {
   else
     pass 'topic launch: suppresses Herdr rename JSON'
   fi
-  expected_home="$home/.local/share/firstmate/workflow-improvements--3eaec6ea7e22"
+  expected_home="$home/.local/share/firstmate/workflow-improvements__3eaec6ea7e22"
   if [ -d "$expected_home/config" ] && [ -d "$expected_home/data" ] && [ -d "$expected_home/state" ] && [ -d "$expected_home/projects" ]; then
     pass 'topic launch: creates standard per-home directories'
   else
     fail 'topic launch: did not create standard per-home directories'
   fi
   out=$(cat "$log")
-  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements--3eaec6ea7e22\t--session\tfirstmate-workflow-improvements--3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
-  assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-test\tfirstmate\t--session\tfirstmate-workflow-improvements--3eaec6ea7e22' 'topic launch: names initial Herdr tab firstmate'
-  assert_contains "$out" $'HERDR_ARGS\tpane\trename\tpane-test\tfirstmate\t--session\tfirstmate-workflow-improvements--3eaec6ea7e22' 'topic launch: names initial Herdr pane firstmate'
-  assert_contains "$out" $'ATTACH_SESSION\tfirstmate-workflow-improvements--3eaec6ea7e22' 'topic launch: attaches named Herdr session outside Herdr'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements__3eaec6ea7e22\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
+  assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-test\tfirstmate\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: names initial Herdr tab firstmate'
+  assert_contains "$out" $'HERDR_ARGS\tpane\trename\tpane-test\tfirstmate\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: names initial Herdr pane firstmate'
+  assert_contains "$out" $'ATTACH_SESSION\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: attaches named Herdr session outside Herdr'
   command=$(printf '%s\n' "$out" | awk -F '\t' '/^PANE_RUN_COMMAND/{print $2; exit}')
   assert_contains "$command" "FM_HOME='$expected_home'" 'topic launch: command sets isolated FM_HOME'
-  assert_contains "$command" "HERDR_SESSION='firstmate-workflow-improvements--3eaec6ea7e22'" 'topic launch: command sets generated Herdr session'
+  assert_contains "$command" "HERDR_SESSION='firstmate-workflow-improvements__3eaec6ea7e22'" 'topic launch: command sets generated Herdr session'
   assert_contains "$command" "--session-dir '$expected_home/pi-sessions'" 'topic launch: command isolates Pi session storage'
   assert_contains "$command" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts' -e '$ROOT/.pi/extensions/fm-primary-pi-watch.ts'" 'topic launch: command loads Firstmate Pi extensions explicitly'
   assert_contains "$out" "Other Firstmate sessions and their workers are unrelated to this one" 'topic launch: startup prompt names isolation boundary'
@@ -176,7 +176,7 @@ unit_inside_herdr_uses_current_session_without_nested_attach() {
     fail "inside Herdr: expected success, status=$status output=$out"
   fi
   out=$(cat "$log")
-  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-focus-test--33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr: creates workspace in current session'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr: creates workspace in current session'
   assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-test\tfirstmate\t--session\tcurrent-herdr' 'inside Herdr: names initial Herdr tab firstmate'
   if printf '%s' "$out" | grep -F 'ATTACH_SESSION' >/dev/null; then
     fail "inside Herdr: nested Herdr attach was attempted: $out"
@@ -228,7 +228,7 @@ unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   else
     fail "direct fallback: expected success, status=$status output=$out"
   fi
-  expected_home="$home/.local/share/firstmate/direct-run--753327a3bc4b"
+  expected_home="$home/.local/share/firstmate/direct-run__753327a3bc4b"
   out=$(cat "$log")
   assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=' 'direct fallback: starts Pi with isolated home and no synthetic Herdr session'
   assert_contains "$out" $'PI_ARGS\t--session-dir\t'"$expected_home/pi-sessions"$'\t--name\tfirstmate: Direct Run\t-e\t'"$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" 'direct fallback: invokes Pi directly with explicit extension flags'
@@ -255,7 +255,7 @@ FAKE_SHASUM
   chmod +x "$fakebin/shasum"
   out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" 'Road Map' </dev/null 2>&1)
   status=$?
-  expected_home="$tmp/home/.local/share/firstmate/road-map--baf493d9991d"
+  expected_home="$tmp/home/.local/share/firstmate/road-map__baf493d9991d"
   if [ "$status" -eq 0 ] \
     && [ -d "$expected_home/config" ] \
     && grep -F $'PI_ENV\tFM_HOME='"$expected_home" "$log" >/dev/null; then
@@ -274,7 +274,7 @@ unit_fm_alias_delegates_to_launcher() {
   make_fakebin "$fakebin"
   out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$FM_ALIAS" Alias Topic </dev/null 2>&1)
   status=$?
-  if [ "$status" -eq 0 ] && grep -F $'ATTACH_SESSION\tfirstmate-alias-topic--e5fd5d3c9294' "$log" >/dev/null 2>&1; then
+  if [ "$status" -eq 0 ] && grep -F $'ATTACH_SESSION\tfirstmate-alias-topic__e5fd5d3c9294' "$log" >/dev/null 2>&1; then
     pass 'fm alias: delegates to firstmate launcher'
   else
     fail "fm alias: expected delegated launch, status=$status output=$out log=$(cat "$log" 2>/dev/null || true)"
@@ -295,16 +295,16 @@ unit_colliding_slugs_get_isolated_topic_keys() {
   fi
   out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" 'road-map!' </dev/null 2>&1)
   status=$?
-  env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" road-map-baf493d9991d </dev/null 2>&1
+  env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" road-map--baf493d9991d </dev/null 2>&1
   env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" workflow-improvements </dev/null 2>&1
   if [ "$status" -eq 0 ] \
-    && [ -d "$tmp/home/.local/share/firstmate/road-map--baf493d9991d/config" ] \
-    && [ -d "$tmp/home/.local/share/firstmate/road-map--535280cb1542/config" ] \
-    && [ -d "$tmp/home/.local/share/firstmate/road-map-baf493d9991d/config" ] \
+    && [ -d "$tmp/home/.local/share/firstmate/road-map__baf493d9991d/config" ] \
+    && [ -d "$tmp/home/.local/share/firstmate/road-map__535280cb1542/config" ] \
+    && [ -d "$tmp/home/.local/share/firstmate/road-map-baf493d9991d__d975967f2ae6/config" ] \
     && [ -d "$tmp/home/.local/share/firstmate/workflow-improvements/config" ] \
-    && grep -F $'ATTACH_SESSION\tfirstmate-road-map--baf493d9991d' "$log" >/dev/null \
-    && grep -F $'ATTACH_SESSION\tfirstmate-road-map--535280cb1542' "$log" >/dev/null \
-    && grep -F $'ATTACH_SESSION\tfirstmate-road-map-baf493d9991d' "$log" >/dev/null; then
+    && grep -F $'ATTACH_SESSION\tfirstmate-road-map__baf493d9991d' "$log" >/dev/null \
+    && grep -F $'ATTACH_SESSION\tfirstmate-road-map__535280cb1542' "$log" >/dev/null \
+    && grep -F $'ATTACH_SESSION\tfirstmate-road-map-baf493d9991d__d975967f2ae6' "$log" >/dev/null; then
     pass 'topic collision: distinct raw topics get isolated homes and Herdr sessions'
   else
     fail "topic collision: lossy aliases were not isolated, status=$status output=$out log=$(cat "$log")"
