@@ -217,9 +217,9 @@ A standalone-clone home cannot receive a primary-local commit through that no-fe
 When it is unset, most scripts use the repo root as the home; when it is set, scripts still run from this repo's `bin/`, but `state/`, `data/`, `config/`, and `projects/` come from `$FM_HOME`.
 The `bin/firstmate` topic launcher creates isolated homes under `$HOME/.local/share/firstmate/<topic-key>` by default, or under `FIRSTMATE_HOME_BASE/<topic-key>` when that override is set.
 An already-normalized topic is its own readable key; any topic changed by normalization receives a short hash suffix so distinct raw topics cannot share a home or Herdr session.
-It creates `config/`, `data/`, `state/`, and `projects/`, starts Pi from the shared checkout with explicit Firstmate Pi extensions, and scopes `FM_HOME` only to that launched session.
+It creates `config/`, `data/`, `state/`, `projects/`, and `pi-sessions/`, starts Pi from the shared checkout with explicit Firstmate Pi extensions, and scopes `FM_HOME` only to that launched session.
 Do not set `FM_HOME` globally in shell startup files just to use multiple sessions.
-When Herdr is installed, the launcher uses the current Herdr session plus a new topic workspace if already inside Herdr, or a topic-specific named Herdr session otherwise.
+When Herdr is on `PATH`, the launcher uses the current Herdr session plus a new topic workspace if already inside Herdr, or a topic-specific named Herdr session otherwise.
 The launcher names the initial Herdr tab and pane `firstmate` so mobile and visual clients show the role rather than a generic shell label.
 `FM_ROOT_OVERRIDE` overrides the firstmate repo root used by scripts, including the primary checkout watched by the worktree-tangle guard.
 When `FM_HOME` is unset, it also behaves as the old whole-root override.
