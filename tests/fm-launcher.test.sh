@@ -24,9 +24,14 @@ case "${1:-}" in
     printf '{"result":{"workspace":{"workspace_id":"ws-test"},"tab":{"tab_id":"tab-test"},"root_pane":{"pane_id":"pane-test"}}}\n'
     ;;
   tab)
-    :
+    if [ "${2:-}" = rename ]; then
+      printf '{"id":"cli:tab:rename","result":{"tab":{"label":"%s"}}}\n' "${4:-}"
+    fi
     ;;
   pane)
+    if [ "${2:-}" = rename ]; then
+      printf '{"id":"cli:pane:rename","result":{"pane":{"label":"%s"}}}\n' "${4:-}"
+    fi
     if [ "${2:-}" = run ]; then
       printf 'PANE_RUN_COMMAND\t%s\n' "${4:-}" >> "$FM_LAUNCHER_TEST_LOG"
     fi
@@ -92,6 +97,31 @@ unit_noninteractive_missing_topic_refuses() {
   rm -rf "$tmp"
 }
 
+unit_symlink_install_resolves_shared_checkout() {
+  local tmp fakebin install_bin log out status expected_home
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-symlink.XXXXXX")
+  fakebin="$tmp/fakebin"
+  install_bin="$tmp/install/bin"
+  log="$tmp/log"
+  make_fakebin "$fakebin"
+  mkdir -p "$install_bin"
+  ln -s "$ROOT/bin/firstmate" "$install_bin/firstmate"
+  ln -s "$ROOT/bin/fm" "$install_bin/fm"
+  out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$install_bin:$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$install_bin/fm" Symlink Topic </dev/null 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    pass 'symlink install: launch succeeds through installed fm symlink'
+  else
+    fail "symlink install: expected success, status=$status output=$out"
+  fi
+  expected_home="$tmp/home/.local/share/firstmate/symlink-topic--11b05755eb17"
+  out=$(cat "$log" 2>/dev/null || true)
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-symlink-topic--11b05755eb17' 'symlink install: Herdr workspace cwd uses shared checkout, not install directory'
+  assert_contains "$out" "FM_ROOT_OVERRIDE='$ROOT'" 'symlink install: command exports shared checkout as Firstmate root'
+  assert_contains "$out" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts'" 'symlink install: extension paths use shared checkout'
+  rm -rf "$tmp"
+}
+
 unit_topic_slug_home_and_command() {
   local tmp fakebin log out status home expected_home command
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-topic.XXXXXX")
@@ -105,6 +135,11 @@ unit_topic_slug_home_and_command() {
     pass 'topic launch: exits successfully with fake Herdr attach'
   else
     fail "topic launch: expected success, status=$status output=$out"
+  fi
+  if printf '%s' "$out" | grep -F 'cli:tab:rename' >/dev/null || printf '%s' "$out" | grep -F 'cli:pane:rename' >/dev/null; then
+    fail "topic launch: leaked Herdr rename JSON: $out"
+  else
+    pass 'topic launch: suppresses Herdr rename JSON'
   fi
   expected_home="$home/.local/share/firstmate/workflow-improvements--3eaec6ea7e22"
   if [ -d "$expected_home/config" ] && [ -d "$expected_home/data" ] && [ -d "$expected_home/state" ] && [ -d "$expected_home/projects" ]; then
@@ -278,6 +313,7 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 }
 
 unit_noninteractive_missing_topic_refuses
+unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
 unit_inside_herdr_uses_current_session_without_nested_attach
 unit_inactive_herdr_marker_attaches_topic_session
