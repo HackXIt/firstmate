@@ -33,11 +33,11 @@ firstmate flips the model.
 You talk to a single agent - the first mate - and it runs the crew for you: spawning autonomous agents in a visible session backend, giving each a clean git worktree, supervising them to completion, and handing you finished PRs, approved local merges, or standalone investigation reports.
 For larger fleets, you can opt in to persistent secondmates: second mates that are still ordinary direct reports, but run from their own isolated firstmate homes on this machine or another SSH-reachable host.
 
-firstmate is not a model, not a harness, not a skill, not an MCP server, and not a CLI.
-firstmate is an agent distro for running a crew of agents.
+firstmate is not a model, not a harness, not a skill, and not an MCP server.
+firstmate is an agent distro for running a crew of agents, with a small optional `firstmate`/`fm` launcher for named isolated sessions.
 An agent distro is a portable directory of instructions, skills, tooling, policies, and state conventions that turns a general-purpose agent into a specialized one.
-There is no app to install: the cloned repo is the distro - `AGENTS.md`, bundled firstmate skills, and helper scripts that any terminal coding agent can follow.
-Launching a supported harness inside it for your primary session instantiates your first mate - and makes you the captain.
+There is no separate app to install: the cloned repo is the distro - `AGENTS.md`, bundled firstmate skills, and helper scripts that any terminal coding agent can follow.
+Launching the `firstmate` helper, or launching a supported harness inside the checkout for your primary session, instantiates your first mate - and makes you the captain.
 
 ## Features
 
@@ -85,7 +85,30 @@ git clone https://github.com/kunchenguid/firstmate
 cd firstmate
 ```
 
-Then launch one of the co-primary harnesses; AGENTS.md takes over from there:
+Then optionally put the topic launcher on your `PATH`:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s "$PWD/bin/firstmate" "$HOME/.local/bin/firstmate"
+ln -s "$PWD/bin/fm" "$HOME/.local/bin/fm"
+```
+
+Use that launcher when you want a named, isolated firstmate home from anywhere:
+
+```sh
+firstmate workflow-improvements
+fm paseo-mvp
+```
+
+Each topic stores its private state under `$HOME/.local/share/firstmate/<topic-key>` by default, starts from this shared checkout, and does not require setting `FM_HOME` in shell startup files.
+Already-normalized topics such as `workflow-improvements` keep that readable key; topics that require normalization gain a short hash suffix so distinct names cannot silently share a home or Herdr session.
+The launcher requires Pi; when Herdr is on `PATH`, it also requires `jq` to create the workspace.
+When Herdr is on `PATH`, the launcher creates or uses a topic-specific Herdr session or workspace so multiple firstmate sessions stay visually separate; the initial Herdr tab and pane are named `firstmate`.
+Manual `pi` usage is unchanged because the launcher does not wrap the `pi` command or modify global Pi configuration.
+The launcher opens Pi idle, without sending an initial agent prompt, so you can type the actual request after the session appears.
+If you omit the topic in an interactive terminal, the launcher prompts; if stdin is non-interactive, it prints usage and stops.
+
+You can also launch one of the co-primary harnesses directly from the checkout; AGENTS.md takes over from there:
 
 **Claude Code**
 
