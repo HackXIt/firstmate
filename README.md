@@ -105,6 +105,7 @@ Already-normalized topics such as `workflow-improvements` keep that readable key
 The launcher requires Pi; when Herdr is on `PATH`, it also requires `jq` to create the workspace.
 When Herdr is on `PATH`, the launcher creates or uses a topic-specific Herdr session or workspace so multiple firstmate sessions stay visually separate; the initial Herdr tab and pane are named `firstmate`.
 Manual `pi` usage is unchanged because the launcher does not wrap the `pi` command or modify global Pi configuration.
+The launcher opens Pi idle, without sending an initial agent prompt, so you can type the actual request after the session appears.
 If you omit the topic in an interactive terminal, the launcher prompts; if stdin is non-interactive, it prints usage and stops.
 
 You can also launch one of the co-primary harnesses directly from the checkout; AGENTS.md takes over from there:

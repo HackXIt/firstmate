@@ -157,7 +157,11 @@ unit_topic_slug_home_and_command() {
   assert_contains "$command" "HERDR_SESSION='firstmate-workflow-improvements__3eaec6ea7e22'" 'topic launch: command sets generated Herdr session'
   assert_contains "$command" "--session-dir '$expected_home/pi-sessions'" 'topic launch: command isolates Pi session storage'
   assert_contains "$command" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts' -e '$ROOT/.pi/extensions/fm-primary-pi-watch.ts'" 'topic launch: command loads Firstmate Pi extensions explicitly'
-  assert_contains "$out" "Other Firstmate sessions and their workers are unrelated to this one" 'topic launch: startup prompt names isolation boundary'
+  if printf '%s' "$command" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
+    fail "topic launch: command should not send an initial agent prompt: $command"
+  else
+    pass 'topic launch: opens Pi idle without an initial agent prompt'
+  fi
   rm -rf "$tmp"
 }
 
@@ -232,6 +236,11 @@ unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   out=$(cat "$log")
   assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=' 'direct fallback: starts Pi with isolated home and no synthetic Herdr session'
   assert_contains "$out" $'PI_ARGS\t--session-dir\t'"$expected_home/pi-sessions"$'\t--name\tfirstmate: Direct Run\t-e\t'"$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" 'direct fallback: invokes Pi directly with explicit extension flags'
+  if printf '%s' "$out" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
+    fail "direct fallback: should not send an initial agent prompt: $out"
+  else
+    pass 'direct fallback: opens Pi idle without an initial agent prompt'
+  fi
   rm -rf "$tmp"
 }
 
