@@ -109,29 +109,28 @@ inside_herdr() {
 
 current_herdr_workspace_claimable() {
   local session=$1 tabs pane
-  [ -n "${HERDR_WORKSPACE_ID:-}" ] || return 1
-  [ -n "${HERDR_TAB_ID:-}" ] || return 1
   [ -n "${HERDR_PANE_ID:-}" ] || return 1
-  tabs=$(herdr_scoped "$session" tab list --workspace "$HERDR_WORKSPACE_ID" 2>/dev/null) || return 1
-  printf '%s' "$tabs" | jq -e --arg tab "$HERDR_TAB_ID" '
+  pane=$(herdr_scoped "$session" pane get "$HERDR_PANE_ID" 2>/dev/null) || return 1
+  CURRENT_HERDR_WORKSPACE_ID=$(printf '%s' "$pane" | jq -er --arg pane "$HERDR_PANE_ID" '
+    select(.result.pane.pane_id == $pane) | .result.pane.workspace_id | select(type == "string" and length > 0)
+  ' 2>/dev/null) || return 1
+  CURRENT_HERDR_TAB_ID=$(printf '%s' "$pane" | jq -er --arg pane "$HERDR_PANE_ID" '
+    select(.result.pane.pane_id == $pane) | .result.pane.tab_id | select(type == "string" and length > 0)
+  ' 2>/dev/null) || return 1
+  tabs=$(herdr_scoped "$session" tab list --workspace "$CURRENT_HERDR_WORKSPACE_ID" 2>/dev/null) || return 1
+  printf '%s' "$tabs" | jq -e --arg tab "$CURRENT_HERDR_TAB_ID" '
     (.result.tabs | type) == "array"
     and (.result.tabs | length) == 1
     and .result.tabs[0].tab_id == $tab
-    and ((.result.tabs[0].pane_count // 1) == 1)
+    and .result.tabs[0].pane_count == 1
   ' >/dev/null 2>&1 || return 1
-  pane=$(herdr_scoped "$session" pane get "$HERDR_PANE_ID" 2>/dev/null) || return 1
-  printf '%s' "$pane" | jq -e --arg ws "$HERDR_WORKSPACE_ID" --arg tab "$HERDR_TAB_ID" --arg pane "$HERDR_PANE_ID" '
-    .result.pane.workspace_id == $ws
-    and .result.pane.tab_id == $tab
-    and .result.pane.pane_id == $pane
-  ' >/dev/null 2>&1
 }
 
 reuse_current_herdr_workspace() {
   local topic=$1 home=$2 session=$3 workspace_label=$4
-  herdr_scoped "$session" workspace rename "$HERDR_WORKSPACE_ID" "$workspace_label" >/dev/null \
+  herdr_scoped "$session" workspace rename "$CURRENT_HERDR_WORKSPACE_ID" "$workspace_label" >/dev/null \
     || fail "could not name the current Herdr workspace '$workspace_label'"
-  herdr_scoped "$session" tab rename "$HERDR_TAB_ID" firstmate >/dev/null \
+  herdr_scoped "$session" tab rename "$CURRENT_HERDR_TAB_ID" firstmate >/dev/null \
     || fail "could not name the current Herdr tab 'firstmate'"
   herdr_scoped "$session" pane rename "$HERDR_PANE_ID" firstmate >/dev/null \
     || fail "could not name the current Herdr pane 'firstmate'"
