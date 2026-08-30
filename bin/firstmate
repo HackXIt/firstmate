@@ -33,6 +33,19 @@ slug_topic() {
   printf '%s\n' "$slug"
 }
 
+topic_key() {
+  local topic=$1 slug digest
+  slug=$(slug_topic "$topic") || return 1
+  if [ "$topic" = "$slug" ]; then
+    printf '%s\n' "$slug"
+    return 0
+  fi
+  command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required to isolate normalized topic names"
+  digest=$(printf '%s' "$topic" | sha256sum) || return 1
+  digest=${digest%% *}
+  printf '%s-%.12s\n' "$slug" "$digest"
+}
+
 shell_quote() {
   printf "'"
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
@@ -148,7 +161,7 @@ main() {
 
   topic=$(trim_topic "$raw_topic")
   [ -n "$topic" ] || { usage; exit 2; }
-  slug=$(slug_topic "$topic") || fail "topic must contain at least one ASCII letter or digit"
+  slug=$(topic_key "$topic") || fail "topic must contain at least one ASCII letter or digit"
 
   base=${FIRSTMATE_HOME_BASE:-$HOME/.local/share/firstmate}
   home="$base/$slug"
