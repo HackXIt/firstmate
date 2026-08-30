@@ -103,7 +103,7 @@ fm paseo-mvp
 Each topic stores its private state under `$HOME/.local/share/firstmate/<topic-key>` by default, starts from this shared checkout, and does not require setting `FM_HOME` in shell startup files.
 Already-normalized topics such as `workflow-improvements` keep that readable key; topics that require normalization gain a short hash suffix so distinct names cannot silently share a home or Herdr session.
 The launcher requires Pi; when Herdr is on `PATH`, it also requires `jq` to create the workspace.
-When Herdr is on `PATH`, the launcher creates or uses a topic-specific Herdr session or workspace so multiple firstmate sessions stay visually separate; the initial Herdr tab and pane are named `firstmate`.
+When Herdr is on `PATH`, the launcher reuses a safe empty current Herdr workspace when launched from one, otherwise it creates or uses a topic-specific Herdr session or workspace; the initial Herdr tab and pane are named `firstmate`.
 Manual `pi` usage is unchanged because the launcher does not wrap the `pi` command or modify global Pi configuration.
 The launcher opens Pi idle, without sending an initial agent prompt, so you can type the actual request after the session appears.
 If you omit the topic in an interactive terminal, the launcher prompts; if stdin is non-interactive, it prints usage and stops.
