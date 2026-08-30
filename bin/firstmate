@@ -73,37 +73,18 @@ shell_quote() {
   printf "'"
 }
 
-build_pi_prompt() {
-  local topic=$1 home=$2
-  cat <<EOF
-This is an isolated Firstmate session for topic: $topic
-
-Session identity:
-- FM_HOME: $home
-- Firstmate fork checkout: $FIRSTMATE_ROOT
-
-Other Firstmate sessions and their workers are unrelated to this one.
-Do not supervise, reconcile, or mutate any other Firstmate home.
-
-First action: run bin/fm-session-start.sh from the Firstmate fork checkout and read the digest before doing anything else.
-EOF
-}
-
 build_pi_command() {
-  local topic=$1 home=$2 herdr_session=$3 prompt session_dir name cmd
-  prompt=$(build_pi_prompt "$topic" "$home")
+  local topic=$1 home=$2 herdr_session=$3 session_dir name cmd
   session_dir="$home/pi-sessions"
   name="firstmate: $topic"
   cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
   cmd="$cmd --session-dir $(shell_quote "$session_dir") --name $(shell_quote "$name")"
   cmd="$cmd -e $(shell_quote "$FIRSTMATE_EXT_GUARD") -e $(shell_quote "$FIRSTMATE_EXT_WATCH")"
-  cmd="$cmd $(shell_quote "$prompt")"
   printf '%s\n' "$cmd"
 }
 
 run_pi_direct() {
-  local topic=$1 home=$2 prompt
-  prompt=$(build_pi_prompt "$topic" "$home")
+  local topic=$1 home=$2
   cd "$FIRSTMATE_ROOT" || fail "could not enter Firstmate checkout: $FIRSTMATE_ROOT"
   exec env \
     FM_HOME="$home" \
@@ -113,8 +94,7 @@ run_pi_direct() {
       --session-dir "$home/pi-sessions" \
       --name "firstmate: $topic" \
       -e "$FIRSTMATE_EXT_GUARD" \
-      -e "$FIRSTMATE_EXT_WATCH" \
-      "$prompt"
+      -e "$FIRSTMATE_EXT_WATCH"
 }
 
 herdr_scoped() {
