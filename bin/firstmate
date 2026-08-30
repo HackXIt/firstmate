@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# bin/firstmate - launch an isolated Firstmate topic home from the shared checkout.
+set -u
+
+resolve_script_path() {
+  local source=$1 dir target
+  while [ -L "$source" ]; do
+    dir=$(cd -P "$(dirname "$source")" && pwd) || return 1
+    target=$(readlink "$source") || return 1
+    case "$target" in
+      /*) source=$target ;;
+      *) source=$dir/$target ;;
+    esac
+  done
+  dir=$(cd -P "$(dirname "$source")" && pwd) || return 1
+  printf '%s/%s\n' "$dir" "${source##*/}"
+}
+
+FIRSTMATE_SCRIPT=$(resolve_script_path "${BASH_SOURCE[0]}") \
+  || { printf 'error: could not resolve firstmate launcher path\n' >&2; exit 1; }
+FIRSTMATE_ROOT="$(cd "$(dirname "$FIRSTMATE_SCRIPT")/.." && pwd)"
+FIRSTMATE_EXT_GUARD="$FIRSTMATE_ROOT/.pi/extensions/fm-primary-turnend-guard.ts"
+FIRSTMATE_EXT_WATCH="$FIRSTMATE_ROOT/.pi/extensions/fm-primary-pi-watch.ts"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: firstmate <topic-or-name>
+       fm <topic-or-name>
+
+When the topic is omitted, firstmate prompts only from an interactive terminal.
+EOF
+}
+
+fail() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+
+trim_topic() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+slug_topic() {
+  local topic=$1 slug
+  slug=$(printf '%s' "$topic" \
+    | LC_ALL=C tr '[:upper:]' '[:lower:]' \
+    | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//') || return 1
+  [ -n "$slug" ] || return 1
+  printf '%s\n' "$slug"
+}
+
+topic_key() {
+  local topic=$1 slug digest
+  slug=$(slug_topic "$topic") || return 1
+  if [ "$topic" = "$slug" ]; then
+    printf '%s\n' "$slug"
+    return 0
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest=$(printf '%s' "$topic" | sha256sum) || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    digest=$(printf '%s' "$topic" | shasum -a 256) || return 1
+  else
+    fail "sha256sum or shasum is required to isolate normalized topic names"
+  fi
+  digest=${digest%% *}
+  printf '%s__%.12s\n' "$slug" "$digest"
+}
+
+shell_quote() {
+  printf "'"
+  printf '%s' "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
+build_pi_command() {
+  local topic=$1 home=$2 herdr_session=$3 session_dir name cmd
+  session_dir="$home/pi-sessions"
+  name="firstmate: $topic"
+  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
+  cmd="$cmd --session-dir $(shell_quote "$session_dir") --name $(shell_quote "$name")"
+  cmd="$cmd -e $(shell_quote "$FIRSTMATE_EXT_GUARD") -e $(shell_quote "$FIRSTMATE_EXT_WATCH")"
+  printf '%s\n' "$cmd"
+}
+
+run_pi_direct() {
+  local topic=$1 home=$2
+  cd "$FIRSTMATE_ROOT" || fail "could not enter Firstmate checkout: $FIRSTMATE_ROOT"
+  exec env \
+    FM_HOME="$home" \
+    FM_ROOT_OVERRIDE="$FIRSTMATE_ROOT" \
+    HERDR_SESSION= \
+    pi \
+      --session-dir "$home/pi-sessions" \
+      --name "firstmate: $topic" \
+      -e "$FIRSTMATE_EXT_GUARD" \
+      -e "$FIRSTMATE_EXT_WATCH"
+}
+
+herdr_scoped() {
+  local session=$1
+  shift
+  HERDR_SESSION="$session" herdr "$@" --session "$session"
+}
+
+inside_herdr() {
+  [ "${HERDR_ENV:-}" = "1" ]
+}
+
+run_with_herdr() {
+  local topic=$1 slug=$2 home=$3 session workspace_label out tab_id pane_id command
+  if inside_herdr; then
+    session=${HERDR_SESSION:-default}
+  else
+    session="firstmate-$slug"
+  fi
+  workspace_label="firstmate-$slug"
+
+  command -v jq >/dev/null 2>&1 || fail "Herdr is available but jq is missing; install jq or remove Herdr from PATH to launch Pi directly"
+
+  out=$(herdr_scoped "$session" workspace create --cwd "$FIRSTMATE_ROOT" --label "$workspace_label") \
+    || fail "could not create Herdr workspace '$workspace_label' in session '$session'"
+  tab_id=$(printf '%s' "$out" | jq -r '.result.tab.tab_id // empty' 2>/dev/null) \
+    || fail "could not parse Herdr workspace creation output"
+  pane_id=$(printf '%s' "$out" | jq -r '.result.root_pane.pane_id // empty' 2>/dev/null) \
+    || fail "could not parse Herdr workspace creation output"
+  [ -n "$tab_id" ] || fail "Herdr workspace creation did not return a tab id"
+  [ -n "$pane_id" ] || fail "Herdr workspace creation did not return a root pane id"
+
+  herdr_scoped "$session" tab rename "$tab_id" firstmate >/dev/null \
+    || fail "could not name the Herdr tab 'firstmate'"
+  herdr_scoped "$session" pane rename "$pane_id" firstmate >/dev/null \
+    || fail "could not name the Herdr pane 'firstmate'"
+
+  command=$(build_pi_command "$topic" "$home" "$session")
+  herdr_scoped "$session" pane run "$pane_id" "$command" \
+    || fail "could not start Pi in Herdr workspace '$workspace_label'"
+
+  if inside_herdr; then
+    printf 'Started Firstmate topic %s in Herdr workspace %s.\n' "$topic" "$workspace_label"
+    return 0
+  fi
+
+  exec herdr --session "$session"
+}
+
+main() {
+  local topic raw_topic slug base home
+  case "${1:-}" in
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  if [ "$#" -gt 0 ]; then
+    raw_topic="$*"
+  else
+    if [ ! -t 0 ]; then
+      usage
+      exit 2
+    fi
+    printf 'Firstmate topic/name: ' >&2
+    IFS= read -r raw_topic || raw_topic=""
+  fi
+
+  topic=$(trim_topic "$raw_topic")
+  [ -n "$topic" ] || { usage; exit 2; }
+  slug=$(topic_key "$topic") || fail "topic must contain at least one ASCII letter or digit"
+
+  base=${FIRSTMATE_HOME_BASE:-$HOME/.local/share/firstmate}
+  home="$base/$slug"
+  mkdir -p "$home/config" "$home/data" "$home/state" "$home/projects" "$home/pi-sessions" \
+    || fail "could not create Firstmate home directories under $home"
+
+  command -v pi >/dev/null 2>&1 || fail "pi is not installed or not on PATH"
+
+  if command -v herdr >/dev/null 2>&1; then
+    run_with_herdr "$topic" "$slug" "$home"
+  fi
+
+  run_pi_direct "$topic" "$home"
+}
+
+main "$@"
