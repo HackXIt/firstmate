@@ -21,14 +21,28 @@ printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
 case "${1:-}" in
   workspace)
-    printf '{"result":{"workspace":{"workspace_id":"ws-test"},"tab":{"tab_id":"tab-test"},"root_pane":{"pane_id":"pane-test"}}}\n'
+    if [ "${2:-}" = rename ]; then
+      printf '{"id":"cli:workspace:rename","result":{"workspace":{"label":"%s"}}}\n' "${4:-}"
+    else
+      printf '{"result":{"workspace":{"workspace_id":"ws-test"},"tab":{"tab_id":"tab-test"},"root_pane":{"pane_id":"pane-test"}}}\n'
+    fi
     ;;
   tab)
+    if [ "${2:-}" = list ]; then
+      if [ "${FM_FAKE_HERDR_CURRENT_SAFE:-}" = 1 ]; then
+        printf '{"result":{"tabs":[{"tab_id":"%s","pane_count":1}]}}\n' "${HERDR_TAB_ID:-tab-current}"
+      else
+        printf '{"result":{"tabs":[{"tab_id":"%s","pane_count":1},{"tab_id":"other-tab","pane_count":1}]}}\n' "${HERDR_TAB_ID:-tab-current}"
+      fi
+    fi
     if [ "${2:-}" = rename ]; then
       printf '{"id":"cli:tab:rename","result":{"tab":{"label":"%s"}}}\n' "${4:-}"
     fi
     ;;
   pane)
+    if [ "${2:-}" = get ]; then
+      printf '{"result":{"pane":{"workspace_id":"%s","tab_id":"%s","pane_id":"%s"}}}\n' "${HERDR_WORKSPACE_ID:-ws-current}" "${HERDR_TAB_ID:-tab-current}" "${HERDR_PANE_ID:-pane-current}"
+    fi
     if [ "${2:-}" = rename ]; then
       printf '{"id":"cli:pane:rename","result":{"pane":{"label":"%s"}}}\n' "${4:-}"
     fi
@@ -165,30 +179,63 @@ unit_topic_slug_home_and_command() {
   rm -rf "$tmp"
 }
 
-unit_inside_herdr_uses_current_session_without_nested_attach() {
-  local tmp fakebin log out status home command
+unit_inside_herdr_reuses_safe_current_workspace() {
+  local tmp fakebin log out status home expected_home
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-inside.XXXXXX")
   fakebin="$tmp/bin"
   log="$tmp/log"
   home="$tmp/home"
   make_fakebin "$fakebin"
-  out=$(HOME="$home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" HERDR_ENV=1 HERDR_SESSION=current-herdr "$LAUNCH" 'Focus Test' </dev/null 2>&1)
+  out=$(HOME="$home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" FM_FAKE_HERDR_CURRENT_SAFE=1 HERDR_ENV=1 HERDR_SESSION=current-herdr HERDR_WORKSPACE_ID=ws-current HERDR_TAB_ID=tab-current HERDR_PANE_ID=pane-current "$LAUNCH" 'Focus Test' </dev/null 2>&1)
   status=$?
   if [ "$status" -eq 0 ]; then
-    pass 'inside Herdr: launch command succeeds'
+    pass 'inside Herdr safe: launch command succeeds'
   else
-    fail "inside Herdr: expected success, status=$status output=$out"
+    fail "inside Herdr safe: expected success, status=$status output=$out"
+  fi
+  expected_home="$home/.local/share/firstmate/focus-test__33408c7ea820"
+  out=$(cat "$log")
+  assert_contains "$out" $'HERDR_ARGS\ttab\tlist\t--workspace\tws-current\t--session\tcurrent-herdr' 'inside Herdr safe: inspects current workspace tabs before reuse'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\trename\tws-current\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr safe: renames current workspace instead of creating another'
+  assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-current\tfirstmate\t--session\tcurrent-herdr' 'inside Herdr safe: names current Herdr tab firstmate'
+  assert_contains "$out" $'HERDR_ARGS\tpane\trename\tpane-current\tfirstmate\t--session\tcurrent-herdr' 'inside Herdr safe: names current Herdr pane firstmate'
+  if printf '%s' "$out" | grep -F $'HERDR_ARGS\tworkspace\tcreate' >/dev/null; then
+    fail "inside Herdr safe: created a second workspace instead of reusing current: $out"
+  else
+    pass 'inside Herdr safe: does not create another workspace'
+  fi
+  if printf '%s' "$out" | grep -F 'ATTACH_SESSION' >/dev/null; then
+    fail "inside Herdr safe: nested Herdr attach was attempted: $out"
+  else
+    pass 'inside Herdr safe: does not attach nested Herdr TUI'
+  fi
+  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=current-herdr' 'inside Herdr safe: execs Pi in the current pane with isolated home'
+  rm -rf "$tmp"
+}
+
+unit_inside_herdr_unsafe_creates_new_workspace() {
+  local tmp fakebin log out status home command
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-inside-unsafe.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  home="$tmp/home"
+  make_fakebin "$fakebin"
+  out=$(HOME="$home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" HERDR_ENV=1 HERDR_SESSION=current-herdr HERDR_WORKSPACE_ID=ws-current HERDR_TAB_ID=tab-current HERDR_PANE_ID=pane-current "$LAUNCH" 'Focus Test' </dev/null 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    pass 'inside Herdr unsafe: launch command succeeds'
+  else
+    fail "inside Herdr unsafe: expected success, status=$status output=$out"
   fi
   out=$(cat "$log")
-  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr: creates workspace in current session'
-  assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-test\tfirstmate\t--session\tcurrent-herdr' 'inside Herdr: names initial Herdr tab firstmate'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr unsafe: creates a new workspace in current session'
   if printf '%s' "$out" | grep -F 'ATTACH_SESSION' >/dev/null; then
-    fail "inside Herdr: nested Herdr attach was attempted: $out"
+    fail "inside Herdr unsafe: nested Herdr attach was attempted: $out"
   else
-    pass 'inside Herdr: does not attach nested Herdr TUI'
+    pass 'inside Herdr unsafe: does not attach nested Herdr TUI'
   fi
   command=$(printf '%s\n' "$out" | awk -F '\t' '/^PANE_RUN_COMMAND/{print $2; exit}')
-  assert_contains "$command" "HERDR_SESSION='current-herdr'" 'inside Herdr: command preserves current Herdr session'
+  assert_contains "$command" "HERDR_SESSION='current-herdr'" 'inside Herdr unsafe: command preserves current Herdr session'
   rm -rf "$tmp"
 }
 
@@ -324,7 +371,8 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 unit_noninteractive_missing_topic_refuses
 unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
-unit_inside_herdr_uses_current_session_without_nested_attach
+unit_inside_herdr_reuses_safe_current_workspace
+unit_inside_herdr_unsafe_creates_new_workspace
 unit_inactive_herdr_marker_attaches_topic_session
 unit_without_herdr_falls_back_to_pi_without_wrapping_pi
 unit_shasum_fallback_generates_stable_topic_key

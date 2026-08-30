@@ -220,7 +220,8 @@ An already-normalized topic is its own readable key; any topic changed by normal
 It creates `config/`, `data/`, `state/`, `projects/`, and `pi-sessions/`, starts Pi from the shared checkout with explicit Firstmate Pi extensions, and scopes `FM_HOME` only to that launched session.
 It opens Pi idle rather than sending an initial prompt, so the first agent turn is the captain's actual request.
 Do not set `FM_HOME` globally in shell startup files just to use multiple sessions.
-When Herdr is on `PATH`, the launcher uses the current Herdr session plus a new topic workspace if already inside Herdr, or a topic-specific named Herdr session otherwise.
+When Herdr is on `PATH`, the launcher reuses and renames a safe empty current Herdr workspace if already inside one, or falls back to creating a topic workspace in the current Herdr session when that workspace is not safe to claim.
+Outside Herdr, it creates or attaches a topic-specific named Herdr session instead.
 The launcher names the initial Herdr tab and pane `firstmate` so mobile and visual clients show the role rather than a generic shell label.
 `FM_ROOT_OVERRIDE` overrides the firstmate repo root used by scripts, including the primary checkout watched by the worktree-tangle guard.
 When `FM_HOME` is unset, it also behaves as the old whole-root override.
