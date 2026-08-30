@@ -84,12 +84,12 @@ build_pi_command() {
 }
 
 run_pi_direct() {
-  local topic=$1 home=$2
+  local topic=$1 home=$2 herdr_session=${3:-}
   cd "$FIRSTMATE_ROOT" || fail "could not enter Firstmate checkout: $FIRSTMATE_ROOT"
   exec env \
     FM_HOME="$home" \
     FM_ROOT_OVERRIDE="$FIRSTMATE_ROOT" \
-    HERDR_SESSION= \
+    HERDR_SESSION="$herdr_session" \
     pi \
       --session-dir "$home/pi-sessions" \
       --name "firstmate: $topic" \
@@ -107,6 +107,36 @@ inside_herdr() {
   [ "${HERDR_ENV:-}" = "1" ]
 }
 
+current_herdr_workspace_claimable() {
+  local session=$1 tabs pane
+  [ -n "${HERDR_PANE_ID:-}" ] || return 1
+  pane=$(herdr_scoped "$session" pane get "$HERDR_PANE_ID" 2>/dev/null) || return 1
+  CURRENT_HERDR_WORKSPACE_ID=$(printf '%s' "$pane" | jq -er --arg pane "$HERDR_PANE_ID" '
+    select(.result.pane.pane_id == $pane) | .result.pane.workspace_id | select(type == "string" and length > 0)
+  ' 2>/dev/null) || return 1
+  CURRENT_HERDR_TAB_ID=$(printf '%s' "$pane" | jq -er --arg pane "$HERDR_PANE_ID" '
+    select(.result.pane.pane_id == $pane) | .result.pane.tab_id | select(type == "string" and length > 0)
+  ' 2>/dev/null) || return 1
+  tabs=$(herdr_scoped "$session" tab list --workspace "$CURRENT_HERDR_WORKSPACE_ID" 2>/dev/null) || return 1
+  printf '%s' "$tabs" | jq -e --arg tab "$CURRENT_HERDR_TAB_ID" '
+    (.result.tabs | type) == "array"
+    and (.result.tabs | length) == 1
+    and .result.tabs[0].tab_id == $tab
+    and .result.tabs[0].pane_count == 1
+  ' >/dev/null 2>&1 || return 1
+}
+
+reuse_current_herdr_workspace() {
+  local topic=$1 home=$2 session=$3 workspace_label=$4
+  herdr_scoped "$session" workspace rename "$CURRENT_HERDR_WORKSPACE_ID" "$workspace_label" >/dev/null \
+    || fail "could not name the current Herdr workspace '$workspace_label'"
+  herdr_scoped "$session" tab rename "$CURRENT_HERDR_TAB_ID" firstmate >/dev/null \
+    || fail "could not name the current Herdr tab 'firstmate'"
+  herdr_scoped "$session" pane rename "$HERDR_PANE_ID" firstmate >/dev/null \
+    || fail "could not name the current Herdr pane 'firstmate'"
+  run_pi_direct "$topic" "$home" "$session"
+}
+
 run_with_herdr() {
   local topic=$1 slug=$2 home=$3 session workspace_label out tab_id pane_id command
   if inside_herdr; then
@@ -117,6 +147,10 @@ run_with_herdr() {
   workspace_label="firstmate-$slug"
 
   command -v jq >/dev/null 2>&1 || fail "Herdr is available but jq is missing; install jq or remove Herdr from PATH to launch Pi directly"
+
+  if inside_herdr && current_herdr_workspace_claimable "$session"; then
+    reuse_current_herdr_workspace "$topic" "$home" "$session" "$workspace_label"
+  fi
 
   out=$(herdr_scoped "$session" workspace create --cwd "$FIRSTMATE_ROOT" --label "$workspace_label") \
     || fail "could not create Herdr workspace '$workspace_label' in session '$session'"
@@ -179,7 +213,7 @@ main() {
     run_with_herdr "$topic" "$slug" "$home"
   fi
 
-  run_pi_direct "$topic" "$home"
+  run_pi_direct "$topic" "$home" ""
 }
 
 main "$@"
