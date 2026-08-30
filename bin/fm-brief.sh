@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--no-mistakes-skip-ci]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
@@ -43,6 +43,8 @@
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
+# --no-mistakes-skip-ci applies only to no-mistakes ship briefs and makes the CI
+# skip explicit for GitLab mirror-fork MRs that intentionally have no GitLab CI.
 # There is no --yolo flag here. The worker never owns approval decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
@@ -110,6 +112,7 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+NO_MISTAKES_SKIP_CI=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -129,6 +132,7 @@ for a in "$@"; do
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
+    --no-mistakes-skip-ci) NO_MISTAKES_SKIP_CI=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's approval authority, not a
@@ -157,6 +161,16 @@ if [ "$KIND" = ship ]; then
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
+fi
+if [ "$NO_MISTAKES_SKIP_CI" -eq 1 ]; then
+  if [ "$KIND" != ship ]; then
+    echo "error: --no-mistakes-skip-ci applies only to ship briefs" >&2
+    exit 1
+  fi
+  if [ "$MODE" != no-mistakes ]; then
+    echo "error: --no-mistakes-skip-ci requires --mode no-mistakes" >&2
+    exit 1
+  fi
 fi
 ID=${POS[0]}
 
@@ -364,6 +378,20 @@ fi
 # delivery mode, validated above. The generated DOD opens with the fixed
 # "Delivery contract: mode=<mode>" line that bin/fm-spawn.sh checks against its own
 # explicit --mode before launching.
+NO_MISTAKES_CI_INSTRUCTION=
+IFS= read -r -d '' NO_MISTAKES_READY_LINE <<EOF || true
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+EOF
+if [ "$NO_MISTAKES_SKIP_CI" -eq 1 ]; then
+  IFS= read -r -d '' NO_MISTAKES_CI_INSTRUCTION <<EOF || true
+For this task, Firstmate explicitly selected the no-CI GitLab mirror-fork path.
+When starting no-mistakes, pass \`--skip=ci\` to \`no-mistakes axi run\`.
+CI on the GitHub counterpart is separate explicit work, not part of this GitLab MR.
+EOF
+  IFS= read -r -d '' NO_MISTAKES_READY_LINE <<EOF || true
+After /no-mistakes reports the PR is ready with the CI step skipped, append \`done: PR {url} CI skipped\` and stop. You are finished.
+EOF
+fi
 case "$MODE" in
   direct-PR)
     SETUP2=""
@@ -405,14 +433,14 @@ You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
 When starting no-mistakes, make \`--intent\` preserve all relevant content from this brief's \`# Task\` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
-
+$NO_MISTAKES_CI_INSTRUCTION
 Two firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
   Firstmate applies the authority contract in its \`AGENTS.md\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+$NO_MISTAKES_READY_LINE
 EOF
     ;;
 esac

@@ -286,8 +286,10 @@ yolo on a ship brief|brief-refused-b1 some-proj --mode direct-PR --yolo on|--yol
 yolo=value form on a ship brief|brief-refused-b2 some-proj --mode direct-PR --yolo=off|--yolo is not a brief input
 mode on a scout brief|brief-refused-b3 some-proj --scout --mode direct-PR|--mode applies only to ship briefs
 mode on a secondmate charter|brief-refused-b4 --secondmate --no-projects --mode no-mistakes|--mode applies only to ship briefs
+CI skip on direct-PR brief|brief-refused-b5 some-proj --mode direct-PR --no-mistakes-skip-ci|--no-mistakes-skip-ci requires --mode no-mistakes
+CI skip on scout brief|brief-refused-b6 some-proj --scout --no-mistakes-skip-ci|--no-mistakes-skip-ci applies only to ship briefs
 ROWS
-  pass "fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped"
+  pass "fm-brief.sh: --yolo, CI skip, and scout/secondmate --mode are refused when they do not apply"
 }
 
 test_faster_paths_use_configured_authority_without_stacked_review() {
@@ -329,6 +331,8 @@ test_no_mistakes_dod_wording() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "brief was not scaffolded"
+  assert_no_grep "--skip=ci" "$brief" \
+    "default no-mistakes briefs must not silently skip CI"
   assert_grep "no-mistakes itself provides for the mechanics" "$brief" \
     "no-mistakes DOD lost its guidance-reference sentence"
   # shellcheck disable=SC2016  # single quotes are deliberate: the backticks must stay literal
@@ -352,6 +356,25 @@ test_no_mistakes_dod_wording() {
   assert_grep "firstmate's authority check" "$brief" \
     "no-mistakes DOD lost the apostrophe prose that the structural fix makes parse-safe"
   pass "fm-brief.sh: no-mistakes DOD keeps its apostrophe prose, now parse-safe"
+}
+
+test_no_mistakes_ci_skip_brief_is_explicit() {
+  local home id brief
+  home="$TMP_ROOT/ci-skip-home"
+  mkdir -p "$home/data"
+  id="brief-ci-skip-b2"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" mirror-proj --mode no-mistakes --no-mistakes-skip-ci >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "CI-skip brief was not scaffolded"
+  # shellcheck disable=SC2016  # single quotes keep the generated backticks literal
+  assert_grep 'pass `--skip=ci` to `no-mistakes axi run`' "$brief" \
+    "CI-skip brief did not tell the worker to skip the CI step explicitly"
+  assert_grep "GitHub counterpart is separate explicit work" "$brief" \
+    "CI-skip brief did not keep upstream-facing CI separate from the GitLab MR"
+  # shellcheck disable=SC2016  # single quotes keep the generated backticks literal
+  assert_grep 'append `done: PR {url} CI skipped`' "$brief" \
+    "CI-skip brief did not require a truthful ready report"
+  pass "fm-brief.sh: GitLab mirror-fork CI skip is an explicit no-mistakes brief contract"
 }
 
 test_ship_project_memory_wording() {
@@ -813,6 +836,7 @@ test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
+test_no_mistakes_ci_skip_brief_is_explicit
 test_ship_project_memory_wording
 test_matching_project_context_is_injected_into_ship_and_scout_briefs
 test_unconfigured_project_context_keeps_brief_bytes_unchanged
