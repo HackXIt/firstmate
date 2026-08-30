@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# bin/fm - short alias for the Firstmate topic launcher.
+set -u
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$DIR/firstmate" "$@"

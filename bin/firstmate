@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# bin/firstmate - launch an isolated Firstmate topic home from the shared checkout.
+set -u
+
+FIRSTMATE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FIRSTMATE_EXT_GUARD="$FIRSTMATE_ROOT/.pi/extensions/fm-primary-turnend-guard.ts"
+FIRSTMATE_EXT_WATCH="$FIRSTMATE_ROOT/.pi/extensions/fm-primary-pi-watch.ts"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: firstmate <topic-or-name>
+       fm <topic-or-name>
+
+When the topic is omitted, firstmate prompts only from an interactive terminal.
+EOF
+}
+
+fail() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+
+trim_topic() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+slug_topic() {
+  local topic=$1 slug
+  slug=$(printf '%s' "$topic" \
+    | LC_ALL=C tr '[:upper:]' '[:lower:]' \
+    | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//') || return 1
+  [ -n "$slug" ] || return 1
+  printf '%s\n' "$slug"
+}
+
+shell_quote() {
+  printf "'"
+  printf '%s' "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
+}
+
+build_pi_prompt() {
+  local topic=$1 home=$2
+  cat <<EOF
+This is an isolated Firstmate session for topic: $topic
+
+Session identity:
+- FM_HOME: $home
+- Firstmate fork checkout: $FIRSTMATE_ROOT
+
+Other Firstmate sessions and their workers are unrelated to this one.
+Do not supervise, reconcile, or mutate any other Firstmate home.
+
+First action: run bin/fm-session-start.sh from the Firstmate fork checkout and read the digest before doing anything else.
+EOF
+}
+
+build_pi_command() {
+  local topic=$1 home=$2 herdr_session=$3 prompt session_dir name cmd
+  prompt=$(build_pi_prompt "$topic" "$home")
+  session_dir="$home/pi-sessions"
+  name="firstmate: $topic"
+  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
+  cmd="$cmd --session-dir $(shell_quote "$session_dir") --name $(shell_quote "$name")"
+  cmd="$cmd -e $(shell_quote "$FIRSTMATE_EXT_GUARD") -e $(shell_quote "$FIRSTMATE_EXT_WATCH")"
+  cmd="$cmd $(shell_quote "$prompt")"
+  printf '%s\n' "$cmd"
+}
+
+run_pi_direct() {
+  local topic=$1 home=$2 prompt
+  prompt=$(build_pi_prompt "$topic" "$home")
+  cd "$FIRSTMATE_ROOT" || fail "could not enter Firstmate checkout: $FIRSTMATE_ROOT"
+  exec env \
+    FM_HOME="$home" \
+    FM_ROOT_OVERRIDE="$FIRSTMATE_ROOT" \
+    HERDR_SESSION= \
+    pi \
+      --session-dir "$home/pi-sessions" \
+      --name "firstmate: $topic" \
+      -e "$FIRSTMATE_EXT_GUARD" \
+      -e "$FIRSTMATE_EXT_WATCH" \
+      "$prompt"
+}
+
+herdr_scoped() {
+  local session=$1
+  shift
+  HERDR_SESSION="$session" herdr "$@" --session "$session"
+}
+
+run_with_herdr() {
+  local topic=$1 slug=$2 home=$3 session workspace_label out tab_id pane_id command
+  if [ -n "${HERDR_ENV:-}" ]; then
+    session=${HERDR_SESSION:-default}
+  else
+    session="firstmate-$slug"
+  fi
+  workspace_label="firstmate-$slug"
+
+  command -v jq >/dev/null 2>&1 || fail "Herdr is available but jq is missing; install jq or remove Herdr from PATH to launch Pi directly"
+
+  out=$(herdr_scoped "$session" workspace create --cwd "$FIRSTMATE_ROOT" --label "$workspace_label") \
+    || fail "could not create Herdr workspace '$workspace_label' in session '$session'"
+  tab_id=$(printf '%s' "$out" | jq -r '.result.tab.tab_id // empty' 2>/dev/null) \
+    || fail "could not parse Herdr workspace creation output"
+  pane_id=$(printf '%s' "$out" | jq -r '.result.root_pane.pane_id // empty' 2>/dev/null) \
+    || fail "could not parse Herdr workspace creation output"
+  [ -n "$tab_id" ] || fail "Herdr workspace creation did not return a tab id"
+  [ -n "$pane_id" ] || fail "Herdr workspace creation did not return a root pane id"
+
+  herdr_scoped "$session" tab rename "$tab_id" firstmate \
+    || fail "could not name the Herdr tab 'firstmate'"
+  herdr_scoped "$session" pane rename "$pane_id" firstmate \
+    || fail "could not name the Herdr pane 'firstmate'"
+
+  command=$(build_pi_command "$topic" "$home" "$session")
+  herdr_scoped "$session" pane run "$pane_id" "$command" \
+    || fail "could not start Pi in Herdr workspace '$workspace_label'"
+
+  if [ -n "${HERDR_ENV:-}" ]; then
+    printf 'Started Firstmate topic %s in Herdr workspace %s.\n' "$topic" "$workspace_label"
+    return 0
+  fi
+
+  exec herdr --session "$session"
+}
+
+main() {
+  local topic raw_topic slug base home
+  case "${1:-}" in
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  if [ "$#" -gt 0 ]; then
+    raw_topic="$*"
+  else
+    if [ ! -t 0 ]; then
+      usage
+      exit 2
+    fi
+    printf 'Firstmate topic/name: ' >&2
+    IFS= read -r raw_topic || raw_topic=""
+  fi
+
+  topic=$(trim_topic "$raw_topic")
+  [ -n "$topic" ] || { usage; exit 2; }
+  slug=$(slug_topic "$topic") || fail "topic must contain at least one ASCII letter or digit"
+
+  base=${FIRSTMATE_HOME_BASE:-$HOME/.local/share/firstmate}
+  home="$base/$slug"
+  mkdir -p "$home/config" "$home/data" "$home/state" "$home/projects" "$home/pi-sessions" \
+    || fail "could not create Firstmate home directories under $home"
+
+  command -v pi >/dev/null 2>&1 || fail "pi is not installed or not on PATH"
+
+  if command -v herdr >/dev/null 2>&1; then
+    run_with_herdr "$topic" "$slug" "$home"
+  fi
+
+  run_pi_direct "$topic" "$home"
+}
+
+main "$@"
