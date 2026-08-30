@@ -215,6 +215,11 @@ A standalone-clone home cannot receive a primary-local commit through that no-fe
 
 `FM_HOME` selects the operational home for one firstmate instance.
 When it is unset, most scripts use the repo root as the home; when it is set, scripts still run from this repo's `bin/`, but `state/`, `data/`, `config/`, and `projects/` come from `$FM_HOME`.
+The `bin/firstmate` topic launcher creates isolated homes under `$HOME/.local/share/firstmate/<slug>` by default, or under `FIRSTMATE_HOME_BASE/<slug>` when that override is set.
+It creates `config/`, `data/`, `state/`, and `projects/`, starts Pi from the shared checkout with explicit Firstmate Pi extensions, and scopes `FM_HOME` only to that launched session.
+Do not set `FM_HOME` globally in shell startup files just to use multiple sessions.
+When Herdr is installed, the launcher uses the current Herdr session plus a new topic workspace if already inside Herdr, or a topic-specific named Herdr session otherwise.
+The launcher names the initial Herdr tab and pane `firstmate` so mobile and visual clients show the role rather than a generic shell label.
 `FM_ROOT_OVERRIDE` overrides the firstmate repo root used by scripts, including the primary checkout watched by the worktree-tangle guard.
 When `FM_HOME` is unset, it also behaves as the old whole-root override.
 `bin/fm-send.sh` is intentionally stricter than that general fallback: it requires `FM_HOME` to be set before resolving a target, so operator steers cannot silently resolve against the wrong home.
@@ -542,6 +547,7 @@ Runtime tuning via environment variables (defaults shown):
 
 ```sh
 FM_HOME=                 # optional operational home for most scripts, unset means this repo root; fm-send requires it explicitly
+FIRSTMATE_HOME_BASE=$HOME/.local/share/firstmate  # firstmate/fm launcher base for topic-isolated homes
 FM_ROOT_OVERRIDE=        # override firstmate repo root, tangle-guard target, and zellij/cmux home-title hash; also legacy whole-root override when FM_HOME is unset
 FM_STATE_OVERRIDE=       # alternate state dir, mainly for tests
 FM_DATA_OVERRIDE=        # alternate data dir, mainly for tests
