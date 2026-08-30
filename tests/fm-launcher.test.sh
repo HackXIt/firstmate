@@ -153,6 +153,25 @@ unit_inside_herdr_uses_current_session_without_nested_attach() {
   rm -rf "$tmp"
 }
 
+unit_inactive_herdr_marker_attaches_topic_session() {
+  local tmp fakebin log out status
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-inactive-herdr.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  make_fakebin "$fakebin"
+  out=$(HOME="$tmp/home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" HERDR_ENV=0 HERDR_SESSION=ambient-session "$LAUNCH" inactive-marker </dev/null 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ] \
+    && grep -F $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-inactive-marker\t--session\tfirstmate-inactive-marker' "$log" >/dev/null \
+    && grep -F $'ATTACH_SESSION\tfirstmate-inactive-marker' "$log" >/dev/null \
+    && ! grep -F -- $'--session\tambient-session' "$log" >/dev/null; then
+    pass 'inactive Herdr marker: attaches topic-specific session outside Herdr'
+  else
+    fail "inactive Herdr marker: expected outside-Herdr behavior, status=$status output=$out log=$(cat "$log" 2>/dev/null || true)"
+  fi
+  rm -rf "$tmp"
+}
+
 unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   local tmp fakebin log out status home expected_home
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-direct.XXXXXX")
@@ -227,6 +246,7 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 unit_noninteractive_missing_topic_refuses
 unit_topic_slug_home_and_command
 unit_inside_herdr_uses_current_session_without_nested_attach
+unit_inactive_herdr_marker_attaches_topic_session
 unit_without_herdr_falls_back_to_pi_without_wrapping_pi
 unit_fm_alias_delegates_to_launcher
 unit_colliding_slugs_get_isolated_topic_keys

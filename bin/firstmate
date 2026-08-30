@@ -102,9 +102,13 @@ herdr_scoped() {
   HERDR_SESSION="$session" herdr "$@" --session "$session"
 }
 
+inside_herdr() {
+  [ "${HERDR_ENV:-}" = "1" ]
+}
+
 run_with_herdr() {
   local topic=$1 slug=$2 home=$3 session workspace_label out tab_id pane_id command
-  if [ -n "${HERDR_ENV:-}" ]; then
+  if inside_herdr; then
     session=${HERDR_SESSION:-default}
   else
     session="firstmate-$slug"
@@ -131,7 +135,7 @@ run_with_herdr() {
   herdr_scoped "$session" pane run "$pane_id" "$command" \
     || fail "could not start Pi in Herdr workspace '$workspace_label'"
 
-  if [ -n "${HERDR_ENV:-}" ]; then
+  if inside_herdr; then
     printf 'Started Firstmate topic %s in Herdr workspace %s.\n' "$topic" "$workspace_label"
     return 0
   fi
