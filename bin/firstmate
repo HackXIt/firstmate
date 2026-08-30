@@ -64,7 +64,7 @@ topic_key() {
     fail "sha256sum or shasum is required to isolate normalized topic names"
   fi
   digest=${digest%% *}
-  printf '%s--%.12s\n' "$slug" "$digest"
+  printf '%s__%.12s\n' "$slug" "$digest"
 }
 
 shell_quote() {
