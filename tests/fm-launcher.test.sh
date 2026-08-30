@@ -30,7 +30,11 @@ case "${1:-}" in
   tab)
     if [ "${2:-}" = list ]; then
       if [ "${FM_FAKE_HERDR_CURRENT_SAFE:-}" = 1 ]; then
-        printf '{"result":{"tabs":[{"tab_id":"%s","pane_count":1}]}}\n' "${HERDR_TAB_ID:-tab-current}"
+        if [ "${FM_FAKE_HERDR_MISSING_PANE_COUNT:-}" = 1 ]; then
+          printf '{"result":{"tabs":[{"tab_id":"%s"}]}}\n' "${FM_FAKE_HERDR_LIVE_TAB_ID:-${HERDR_TAB_ID:-tab-current}}"
+        else
+          printf '{"result":{"tabs":[{"tab_id":"%s","pane_count":1}]}}\n' "${FM_FAKE_HERDR_LIVE_TAB_ID:-${HERDR_TAB_ID:-tab-current}}"
+        fi
       else
         printf '{"result":{"tabs":[{"tab_id":"%s","pane_count":1},{"tab_id":"other-tab","pane_count":1}]}}\n' "${HERDR_TAB_ID:-tab-current}"
       fi
@@ -41,7 +45,7 @@ case "${1:-}" in
     ;;
   pane)
     if [ "${2:-}" = get ]; then
-      printf '{"result":{"pane":{"workspace_id":"%s","tab_id":"%s","pane_id":"%s"}}}\n' "${HERDR_WORKSPACE_ID:-ws-current}" "${HERDR_TAB_ID:-tab-current}" "${HERDR_PANE_ID:-pane-current}"
+      printf '{"result":{"pane":{"workspace_id":"%s","tab_id":"%s","pane_id":"%s"}}}\n' "${FM_FAKE_HERDR_LIVE_WORKSPACE_ID:-${HERDR_WORKSPACE_ID:-ws-current}}" "${FM_FAKE_HERDR_LIVE_TAB_ID:-${HERDR_TAB_ID:-tab-current}}" "${HERDR_PANE_ID:-pane-current}"
     fi
     if [ "${2:-}" = rename ]; then
       printf '{"id":"cli:pane:rename","result":{"pane":{"label":"%s"}}}\n' "${4:-}"
@@ -213,6 +217,51 @@ unit_inside_herdr_reuses_safe_current_workspace() {
   rm -rf "$tmp"
 }
 
+unit_inside_herdr_uses_live_workspace_identity() {
+  local tmp fakebin log out status home
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-moved.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  home="$tmp/home"
+  make_fakebin "$fakebin"
+  out=$(HOME="$home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" FM_FAKE_HERDR_CURRENT_SAFE=1 FM_FAKE_HERDR_LIVE_WORKSPACE_ID=ws-live FM_FAKE_HERDR_LIVE_TAB_ID=tab-live HERDR_ENV=1 HERDR_SESSION=current-herdr HERDR_WORKSPACE_ID=ws-stale HERDR_TAB_ID=tab-stale HERDR_PANE_ID=pane-current "$LAUNCH" 'Focus Test' </dev/null 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    pass 'inside Herdr moved: launch command succeeds'
+  else
+    fail "inside Herdr moved: expected success, status=$status output=$out"
+  fi
+  out=$(cat "$log")
+  assert_contains "$out" $'HERDR_ARGS\ttab\tlist\t--workspace\tws-live\t--session\tcurrent-herdr' 'inside Herdr moved: validates the live workspace'
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\trename\tws-live\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr moved: renames the live workspace'
+  assert_contains "$out" $'HERDR_ARGS\ttab\trename\ttab-live\tfirstmate\t--session\tcurrent-herdr' 'inside Herdr moved: renames the live tab'
+  rm -rf "$tmp"
+}
+
+unit_inside_herdr_missing_pane_count_falls_back() {
+  local tmp fakebin log out status home
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-missing-count.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  home="$tmp/home"
+  make_fakebin "$fakebin"
+  out=$(HOME="$home" PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" FM_FAKE_HERDR_CURRENT_SAFE=1 FM_FAKE_HERDR_MISSING_PANE_COUNT=1 HERDR_ENV=1 HERDR_SESSION=current-herdr HERDR_WORKSPACE_ID=ws-current HERDR_TAB_ID=tab-current HERDR_PANE_ID=pane-current "$LAUNCH" 'Focus Test' </dev/null 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    pass 'inside Herdr missing pane count: launch command succeeds'
+  else
+    fail "inside Herdr missing pane count: expected success, status=$status output=$out"
+  fi
+  out=$(cat "$log")
+  assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-focus-test__33408c7ea820\t--session\tcurrent-herdr' 'inside Herdr missing pane count: falls back to a new workspace'
+  if printf '%s' "$out" | grep -F $'HERDR_ARGS\tworkspace\trename\tws-current' >/dev/null; then
+    fail "inside Herdr missing pane count: claimed an unproven workspace: $out"
+  else
+    pass 'inside Herdr missing pane count: refuses to claim the current workspace'
+  fi
+  rm -rf "$tmp"
+}
+
 unit_inside_herdr_unsafe_creates_new_workspace() {
   local tmp fakebin log out status home command
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-inside-unsafe.XXXXXX")
@@ -372,6 +421,8 @@ unit_noninteractive_missing_topic_refuses
 unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
 unit_inside_herdr_reuses_safe_current_workspace
+unit_inside_herdr_uses_live_workspace_identity
+unit_inside_herdr_missing_pane_count_falls_back
 unit_inside_herdr_unsafe_creates_new_workspace
 unit_inactive_herdr_marker_attaches_topic_session
 unit_without_herdr_falls_back_to_pi_without_wrapping_pi
