@@ -14,6 +14,7 @@ SESSION="$SESSION_DIR/session.jsonl"
 mkdir -p "$PROJECT" "$SESSION_DIR" "$HOME_DIR/config" "$HOME_DIR/data" "$HOME_DIR/state" "$HOME_DIR/projects"
 printf 'version=1\nhome=%s\nroot=%s\n' "$HOME_DIR" "$PROJECT" > "$HOME_DIR/.fm-topic-home"
 chmod 600 "$HOME_DIR/.fm-topic-home"
+chmod 775 "$HOME_DIR" "$HOME_DIR/config" "$HOME_DIR/data" "$HOME_DIR/state" "$HOME_DIR/projects" "$SESSION_DIR"
 printf '{"type":"session","version":3,"id":"session-id","timestamp":"2026-01-01T00:00:00.000Z","cwd":"%s"}\n' "$PROJECT" > "$SESSION"
 
 FM_PI_SESSION_HOME_MODULE="$ROOT/.pi/extensions/lib/fm-pi-session-home.ts" \

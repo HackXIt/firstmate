@@ -56,8 +56,7 @@ function ownedByCurrentUser(path: string): boolean {
 function safeDirectory(path: string): boolean {
   try {
     const info = lstatSync(path);
-    return info.isDirectory() && (info.mode & 0o022) === 0 && ownedByCurrentUser(path)
-      && realpathSync(path) === path;
+    return info.isDirectory() && ownedByCurrentUser(path) && realpathSync(path) === path;
   } catch {
     return false;
   }
@@ -66,8 +65,8 @@ function safeDirectory(path: string): boolean {
 function safeRegularFile(path: string): boolean {
   try {
     const info = lstatSync(path);
-    return info.isFile() && info.nlink === 1 && (info.mode & 0o022) === 0
-      && ownedByCurrentUser(path) && realpathSync(path) === path;
+    return info.isFile() && info.nlink === 1 && ownedByCurrentUser(path)
+      && realpathSync(path) === path;
   } catch {
     return false;
   }
@@ -128,12 +127,10 @@ function readFileBounded(path: string, maximumBytes: number): string {
 }
 
 function knownTopicHome(home: string, root: string): boolean {
-  const configuredBase = process.env.FIRSTMATE_HOME_BASE;
   const defaultBase = process.env.HOME ? resolve(process.env.HOME, ".local/share/firstmate") : "";
-  const bases = [configuredBase, defaultBase].filter(
-    (base): base is string => typeof base === "string" && isAbsolute(base),
-  );
-  if (bases.some((base) => safeDirectory(base) && dirname(home) === realpathSync(base))) return true;
+  if (isAbsolute(defaultBase) && safeDirectory(defaultBase) && dirname(home) === realpathSync(defaultBase)) {
+    return true;
+  }
   return markerTrustsHome(home, root);
 }
 

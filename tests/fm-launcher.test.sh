@@ -168,10 +168,10 @@ unit_topic_slug_home_and_command() {
   else
     fail 'topic launch: did not create standard per-home directories'
   fi
-  if [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$(printf 'version=1\nhome=%s\nroot=%s' "$expected_home" "$ROOT")" ]; then
-    pass 'topic launch: binds the isolated home to the shared checkout for recovery'
+  if [ ! -e "$expected_home/.fm-topic-home" ]; then
+    pass 'topic launch: default-base homes need no extra recovery binding'
   else
-    fail 'topic launch: did not publish the expected recovery binding'
+    fail 'topic launch: default-base home received an unnecessary recovery binding'
   fi
   out=$(cat "$log")
   assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements__3eaec6ea7e22\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
@@ -187,6 +187,25 @@ unit_topic_slug_home_and_command() {
     fail "topic launch: command should not send an initial agent prompt: $command"
   else
     pass 'topic launch: opens Pi idle without an initial agent prompt'
+  fi
+  rm -rf "$tmp"
+}
+
+unit_custom_home_base_writes_recovery_binding() {
+  local tmp fakebin log out status expected_home expected_marker
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-custom-base.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  make_fakebin "$fakebin"
+  expected_home="$tmp/custom-homes/custom-topic"
+  out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" FIRSTMATE_HOME_BASE="$tmp/custom-homes" \
+    PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" custom-topic </dev/null 2>&1)
+  status=$?
+  expected_marker=$(printf 'version=1\nhome=%s\nroot=%s' "$expected_home" "$ROOT")
+  if [ "$status" -eq 0 ] && [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$expected_marker" ]; then
+    pass 'custom home base: launcher publishes the owner binding needed for later recovery'
+  else
+    fail "custom home base: recovery binding was not published, status=$status output=$out"
   fi
   rm -rf "$tmp"
 }
@@ -428,6 +447,7 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 unit_noninteractive_missing_topic_refuses
 unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
+unit_custom_home_base_writes_recovery_binding
 unit_inside_herdr_reuses_safe_current_workspace
 unit_inside_herdr_uses_live_workspace_identity
 unit_inside_herdr_missing_pane_count_falls_back
