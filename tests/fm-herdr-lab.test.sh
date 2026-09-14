@@ -13,6 +13,7 @@ TRIPWIRES="$TMP_ROOT/tripwires"
 REAL_SLEEP=$(command -v sleep)
 mkdir -p "$FAKE_STATE"
 printf '%s\n' '/home/test/.config/herdr/herdr.sock' > "$FAKE_STATE/default-socket"
+printf '%s\n' true > "$FAKE_STATE/default-running"
 : > "$FAKE_LOG"
 
 cat > "$FAKEBIN/herdr" <<'SH'
@@ -28,18 +29,20 @@ done
 [ "${previous:-}" = --session ] || { echo "fake herdr: missing trailing --session" >&2; exit 90; }
 session=$last
 default_socket=$(cat "$state/default-socket")
+default_running=$(cat "$state/default-running")
 lab_state=absent
 [ ! -f "$state/$session" ] || lab_state=$(cat "$state/$session")
 
 case "$1 ${2:-}" in
   "session list")
     if [ "$lab_state" = absent ] || [ "$lab_state" = deleted ]; then
-      jq -nc --arg socket "$default_socket" '{sessions:[{default:true,name:"default",running:true,socket_path:$socket}]}'
+      jq -nc --arg socket "$default_socket" --argjson default_running "$default_running" \
+        '{sessions:[{default:true,name:"default",running:$default_running,session_dir:"/home/test/.config/herdr",socket_path:$socket}]}'
     else
       running=false
       [ "$lab_state" = running ] && running=true
-      jq -nc --arg socket "$default_socket" --arg name "$session" --argjson running "$running" \
-        '{sessions:[{default:true,name:"default",running:true,socket_path:$socket},{default:false,name:$name,running:$running,socket_path:("/tmp/" + $name + ".sock")}]}'
+      jq -nc --arg socket "$default_socket" --arg name "$session" --argjson running "$running" --argjson default_running "$default_running" \
+        '{sessions:[{default:true,name:"default",running:$default_running,session_dir:"/home/test/.config/herdr",socket_path:$socket},{default:false,name:$name,running:$running,socket_path:("/tmp/" + $name + ".sock")}]}'
     fi
     ;;
   "server --session")
@@ -175,6 +178,21 @@ test_missing_tripwire_blocks_destruction() {
   pass "fm-herdr-lab: missing tripwire refuses teardown before any Herdr call"
 }
 
+test_stopped_default_is_snapshotted_and_preserved() {
+  local name="fm-lab-stopped-default-$$"
+  printf '%s\n' false > "$FAKE_STATE/default-running"
+  : > "$FAKE_LOG"
+  run_with_fake fm_herdr_lab_provision "$name" || fail "provision refused an unchanged stopped default session"
+  jq -e '.name == "default" and .default == true and .running == false' \
+    "$TRIPWIRES/$name.fleet-state.json" >/dev/null \
+    || fail "tripwire did not snapshot the stopped default session exactly"
+  run_with_fake fm_herdr_lab_teardown "$name" || fail "teardown refused an unchanged stopped default session"
+  [ "$(cat "$FAKE_STATE/default-running")" = false ] || fail "lab lifecycle mutated the stopped default session"
+  assert_absent "$TRIPWIRES/$name.fleet-state.json" "successful stopped-default teardown left its tripwire behind"
+  printf '%s\n' true > "$FAKE_STATE/default-running"
+  pass "fm-herdr-lab: an unchanged stopped default session is snapshotted and preserved"
+}
+
 test_changed_default_trips_after_teardown() {
   local name="fm-lab-tripwire-change-$$" status=0
   : > "$FAKE_LOG"
@@ -186,6 +204,19 @@ test_changed_default_trips_after_teardown() {
   printf '%s\n' '/home/test/.config/herdr/herdr.sock' > "$FAKE_STATE/default-socket"
   rm -f "$TRIPWIRES/$name.fleet-state.json"
   pass "fm-herdr-lab: changed default fleet state is a hard failure"
+}
+
+test_changed_default_running_state_trips_after_teardown() {
+  local name="fm-lab-default-running-change-$$" status=0
+  printf '%s\n' false > "$FAKE_STATE/default-running"
+  : > "$FAKE_LOG"
+  run_with_fake fm_herdr_lab_provision "$name" || fail "stopped-default tripwire fixture provision failed"
+  printf '%s\n' true > "$FAKE_STATE/default-running"
+  run_with_fake fm_herdr_lab_teardown "$name" >/dev/null 2>&1 || status=$?
+  expect_code 1 "$status" "default running-state change must fail teardown"
+  assert_present "$TRIPWIRES/$name.fleet-state.json" "running-state tripwire failure should retain evidence"
+  rm -f "$TRIPWIRES/$name.fleet-state.json"
+  pass "fm-herdr-lab: a default running-state change is a hard failure"
 }
 
 test_stopped_owned_lab_can_reprovision() {
@@ -501,7 +532,9 @@ test_viewer_launcher_refuses_unsafe_arguments() {
 test_refuses_unsafe_names
 test_provision_run_and_guarded_teardown
 test_missing_tripwire_blocks_destruction
+test_stopped_default_is_snapshotted_and_preserved
 test_changed_default_trips_after_teardown
+test_changed_default_running_state_trips_after_teardown
 test_stopped_owned_lab_can_reprovision
 test_failed_delete_retains_tripwire
 test_timed_out_provision_cancels_late_launch
