@@ -317,6 +317,8 @@ It creates `config/`, `data/`, `state/`, `projects/`, and `pi-sessions/`, starts
 The launcher also writes an owner-controlled `.fm-topic-home` binding for topic homes outside the default base so later recovery can validate them without preserving process environment.
 When Herdr later starts Pi with one exact absolute `--session <path>`, the tracked Firstmate Pi extensions restore `FM_HOME` and `FM_ROOT_OVERRIDE` before reading home-local state only when the canonical, owner-controlled session is a direct child of that home's `pi-sessions/`, the home is directly under the default topic base or carries the matching launcher-written binding for a custom base, the standard home directories are safe, and the session header names this shared checkout as its working directory.
 An explicit `FM_HOME` or `FM_ROOT_OVERRIDE` remains authoritative, while recovery outside Herdr is unchanged and missing, relative, repeated, unsupported, linked, unsafe, or mismatched session references refuse extension initialization rather than infer a home or fall back to shared-root state.
+Within Herdr, an absolute `--session` path that does not identify a trusted topic home is intentionally refused during extension initialization rather than passed through as a non-topic launch.
+Recovery from a default Firstmate topic-home base that traverses a symlink is unsupported and deferred; use the canonical physical base path.
 This makes Herdr's native Pi session restore preserve topic isolation after a server or machine restart without setting `FM_HOME` globally.
 It opens Pi idle rather than sending an initial prompt, so the first agent turn is the captain's actual request.
 Do not set `FM_HOME` globally in shell startup files just to use multiple sessions.

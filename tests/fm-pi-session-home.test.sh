@@ -117,6 +117,10 @@ console.log("ok - session header must bind the shared Firstmate checkout");
 expectRefusal(["--session", "session.jsonl"], "a relative session path was trusted");
 console.log("ok - relative or unresolved session references are refused");
 JS
+node_status=$?
+if [ "$node_status" -ne 0 ]; then
+  exit "$node_status"
+fi
 
 command -v pi >/dev/null 2>&1 || { echo "skip: pi not found for executable restore regression"; exit 0; }
 
