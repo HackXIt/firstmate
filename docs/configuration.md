@@ -314,6 +314,9 @@ When it is unset, most scripts use the repo root as the home; when it is set, sc
 The `bin/firstmate` topic launcher creates isolated homes under `$HOME/.local/share/firstmate/<topic-key>` by default, or under `FIRSTMATE_HOME_BASE/<topic-key>` when that override is set.
 An already-normalized topic is its own readable key; any topic changed by normalization receives a short hash suffix so distinct raw topics cannot share a home or Herdr session.
 It creates `config/`, `data/`, `state/`, `projects/`, and `pi-sessions/`, starts Pi from the shared checkout with explicit Firstmate Pi extensions, and scopes `FM_HOME` only to that launched session.
+When Pi later starts with an exact absolute `--session` path, the tracked Firstmate Pi extensions restore `FM_HOME` and `FM_ROOT_OVERRIDE` before reading home-local state only when the session is a direct child of that home's `pi-sessions/`, the standard home directories exist, and the session header names this shared checkout as its working directory.
+An explicit `FM_HOME` or `FM_ROOT_OVERRIDE` remains authoritative, while relative paths, session ids, missing files, other session-directory shapes, and mismatched session headers never infer a home.
+This makes Herdr's native Pi session restore preserve topic isolation after a server or machine restart without setting `FM_HOME` globally.
 It opens Pi idle rather than sending an initial prompt, so the first agent turn is the captain's actual request.
 Do not set `FM_HOME` globally in shell startup files just to use multiple sessions.
 When Herdr is on `PATH`, the launcher resolves its pane's current workspace live and reuses it only when it contains exactly that one tab with exactly one pane.
