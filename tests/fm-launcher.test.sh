@@ -72,7 +72,7 @@ FAKE_PI
 }
 
 without_herdr_fakebin() {
-  local dir=$1
+  local dir=$1 command
   mkdir -p "$dir"
   cat > "$dir/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
@@ -83,6 +83,9 @@ printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
 FAKE_PI
   chmod +x "$dir/pi"
+  for command in cat mv rm; do
+    ln -s "/usr/bin/$command" "$dir/$command"
+  done
 }
 
 assert_contains() {
@@ -164,6 +167,11 @@ unit_topic_slug_home_and_command() {
     pass 'topic launch: creates standard per-home directories'
   else
     fail 'topic launch: did not create standard per-home directories'
+  fi
+  if [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$(printf 'version=1\nhome=%s\nroot=%s' "$expected_home" "$ROOT")" ]; then
+    pass 'topic launch: binds the isolated home to the shared checkout for recovery'
+  else
+    fail 'topic launch: did not publish the expected recovery binding'
   fi
   out=$(cat "$log")
   assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements__3eaec6ea7e22\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
