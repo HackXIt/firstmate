@@ -104,7 +104,8 @@ Each topic stores its private state under `$HOME/.local/share/firstmate/<topic-k
 Already-normalized topics such as `workflow-improvements` keep that readable key; topics that require normalization gain a short hash suffix so distinct names cannot silently share a home or Herdr session.
 The launcher requires Pi; when Herdr is on `PATH`, it also requires `jq` to inspect and manage the workspace.
 When Herdr is on `PATH`, the launcher reuses a current Herdr workspace that contains only its single tab and pane, otherwise it creates or uses a topic-specific Herdr session or workspace; the active Herdr tab and pane are named `firstmate`.
-Manual `pi` usage is unchanged because the launcher does not wrap the `pi` command or modify global Pi configuration.
+Herdr's native Pi session restore preserves each topic's isolated home automatically; [`docs/configuration.md`](docs/configuration.md#fm_home) owns the exact trust boundary, strict non-topic refusal, and deferred symlink limitation.
+Manual Pi launches outside Herdr, and Herdr launches without `--session`, are unchanged because the launcher does not wrap the `pi` command or modify global Pi configuration.
 The launcher opens Pi idle, without sending an initial agent prompt, so you can type the actual request after the session appears.
 If you omit the topic in an interactive terminal, the launcher prompts; if stdin is non-interactive, it prints usage and stops.
 

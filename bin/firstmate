@@ -73,6 +73,25 @@ shell_quote() {
   printf "'"
 }
 
+write_topic_home_marker() {
+  local home=$1 marker temporary expected current
+  marker="$home/.fm-topic-home"
+  expected=$(printf 'version=1\nhome=%s\nroot=%s\n' "$home" "$FIRSTMATE_ROOT") || return 1
+  if [ -e "$marker" ] || [ -L "$marker" ]; then
+    [ -f "$marker" ] && [ ! -L "$marker" ] \
+      || fail "topic-home marker is not a regular file: $marker"
+    current=$(cat "$marker") || fail "could not read topic-home marker: $marker"
+    [ "$current" = "$expected" ] \
+      || fail "topic-home marker does not match this home and Firstmate checkout: $marker"
+    return 0
+  fi
+  temporary="$marker.$$.tmp"
+  (umask 077 && set -o noclobber && printf '%s\n' "$expected" > "$temporary") \
+    || { rm -f "$temporary"; fail "could not create topic-home marker under $home"; }
+  mv "$temporary" "$marker" \
+    || { rm -f "$temporary"; fail "could not publish topic-home marker under $home"; }
+}
+
 build_pi_command() {
   local topic=$1 home=$2 herdr_session=$3 session_dir name cmd
   session_dir="$home/pi-sessions"
@@ -179,7 +198,7 @@ run_with_herdr() {
 }
 
 main() {
-  local topic raw_topic slug base home
+  local topic raw_topic slug base default_base home
   case "${1:-}" in
     -h|--help|help)
       usage
@@ -202,10 +221,17 @@ main() {
   [ -n "$topic" ] || { usage; exit 2; }
   slug=$(topic_key "$topic") || fail "topic must contain at least one ASCII letter or digit"
 
-  base=${FIRSTMATE_HOME_BASE:-$HOME/.local/share/firstmate}
+  default_base="$HOME/.local/share/firstmate"
+  base=${FIRSTMATE_HOME_BASE:-$default_base}
   home="$base/$slug"
   mkdir -p "$home/config" "$home/data" "$home/state" "$home/projects" "$home/pi-sessions" \
     || fail "could not create Firstmate home directories under $home"
+  home=$(CDPATH='' cd -- "$home" && pwd -P) \
+    || fail "could not resolve Firstmate topic home: $home"
+  default_base=$(CDPATH='' cd -- "$default_base" 2>/dev/null && pwd -P) || default_base=""
+  if [ "$(dirname "$home")" != "$default_base" ]; then
+    write_topic_home_marker "$home"
+  fi
 
   command -v pi >/dev/null 2>&1 || fail "pi is not installed or not on PATH"
 

@@ -279,6 +279,7 @@ No Herdr-specific copy of that protocol exists.
 ## Restart and liveness behavior
 
 Stopping and restarting a named Herdr server preserves workspace, tab, pane, and label ids, but the underlying harness processes and live agent registrations do not survive.
+For Pi sessions created by the topic launcher, the native Herdr resume command restores the isolated Firstmate home from the exact session path under the [`FM_HOME`](configuration.md#fm_home) contract before home-local extensions read state.
 A restored same-labeled tab with a missing pane or no registered agent is a husk.
 Create replaces only a confidently dead or no-agent husk, creates the replacement before closing the old tab, and refuses live or unknown states.
 This prevents closing the workspace's last tab before a replacement exists.

@@ -714,7 +714,7 @@ No reasoning-effort axis was found; `gemini --help` on 0.58.0 exposes no effort,
 ## Herdr
 
 The compatibility floor is protocol 14.
-The whole real-Herdr lane's latest active verification uses both Herdr 0.7.4 protocol 16 and Herdr 0.8.0 protocol 19 on macOS aarch64, while focused Herdr 0.7.5 protocol 17, earlier protocol-16, protocol-14, and 0.7.3 evidence is retained where it defines current behavior or fallbacks.
+The whole real-Herdr lane's latest active verification uses both Herdr 0.7.4 protocol 16 and Herdr 0.8.0 protocol 19 on macOS aarch64, while the focused Pi topic-home recovery guard was verified on Herdr 0.9.0 protocol 22 and earlier focused evidence is retained where it defines current behavior or fallbacks.
 Protocol 17 keeps every protocol-16 feature gate satisfied; the event and workspace-move floors remain 16.
 Default-on presentation projection has its own floor at Herdr 0.8.0, protocol 19, verified below.
 
@@ -811,6 +811,34 @@ rc=1
 
 The refusal is a JSON error on stderr with exit 1 and empty stdout, and both client generations report `.server.compatible` and `.server.protocol` per named session, which is what the selection in `bin/backends/herdr.sh` reads.
 `tests/fm-backend-herdr.test.sh` pins the bypass, same-process same-session caching, cross-session isolation, forced reselection, and both status shapes against fakes; `tests/fm-backend-herdr-smoke.test.sh` refreshes the real status normalization against the installed binary's running lab server.
+
+### Pi topic-home recovery
+
+Measured 2026-09-14 against Herdr 0.9.0 for both client and server at protocol 22, Pi 0.84.2, and the installed Herdr Pi integration v8.
+The opt-in guard creates a provider-free canonical version-3 Pi session under an isolated topic home, launches that exact absolute session in a disposable Herdr lab, and requires Herdr's `agent_session` record to report `kind=path`, `source=herdr:pi`, and the identical path.
+It then restarts only the disposable lab with `FM_HOME` and `FM_ROOT_OVERRIDE` removed from the new server environment and requires Herdr's native Pi recovery command to select that exact session once.
+A global capture records the recovered process before project extensions load and at `session_start`, proving that the process begins without Firstmate home environment and that the tracked Firstmate extensions restore the topic home before their load markers are written.
+Recovery supports Herdr's native `pi --session <absolute-path>` form only.
+Conflicting manual combinations such as `--no-session` with `--session`, or ambiguous placement where another option consumes `--session`, are unsupported and may bind topic state.
+The same run requires the shared project state to remain untouched and the stopped default session's tripwire record to remain byte-identical through lab cleanup.
+
+Refresh this guarantee with:
+
+```sh
+FM_PI_SESSION_HOME_HERDR_LIVE_E2E=1 \
+  HERDR_LAB_HELPER=bin/fm-herdr-lab.sh \
+  bin/fm-test-run.sh tests/fm-pi-session-home-herdr-live-e2e.test.sh
+```
+
+Observed 2026-09-14:
+
+```text
+ok - live Herdr records the exact absolute Pi session fixture under the isolated topic home
+ok - native Herdr recovery starts the exact Pi session without FM_HOME or FM_ROOT_OVERRIDE
+ok - restored Firstmate extensions use the topic home and leave shared-project state untouched
+ok - isolated Herdr recovery lab is removed with the default session unchanged
+evidence: herdr-client=0.9.0 protocol=22 herdr-server=0.9.0 protocol=22 pi=0.84.2 integration=v8
+```
 
 ### Submit confirmation
 
