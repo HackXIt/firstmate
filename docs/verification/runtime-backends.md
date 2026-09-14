@@ -818,6 +818,8 @@ Measured 2026-09-14 against Herdr 0.9.0 for both client and server at protocol 2
 The opt-in guard creates a provider-free canonical version-3 Pi session under an isolated topic home, launches that exact absolute session in a disposable Herdr lab, and requires Herdr's `agent_session` record to report `kind=path`, `source=herdr:pi`, and the identical path.
 It then restarts only the disposable lab with `FM_HOME` and `FM_ROOT_OVERRIDE` removed from the new server environment and requires Herdr's native Pi recovery command to select that exact session once.
 A global capture records the recovered process before project extensions load and at `session_start`, proving that the process begins without Firstmate home environment and that the tracked Firstmate extensions restore the topic home before their load markers are written.
+Recovery supports Herdr's native `pi --session <absolute-path>` form only.
+Conflicting manual combinations such as `--no-session` with `--session`, or ambiguous placement where another option consumes `--session`, are unsupported and may bind topic state.
 The same run requires the shared project state to remain untouched and the stopped default session's tripwire record to remain byte-identical through lab cleanup.
 
 Refresh this guarantee with:
