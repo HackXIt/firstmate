@@ -18,7 +18,8 @@ fm_root_is_secondmate_home() {
 }
 
 # Return 0 when $1 is a genuine primary root whose effective state dir is $2.
-# A valid secondmate marker force-includes a linked secondmate home.
+# Worker identity takes precedence over a recovered supervisor checkout.
+# Without it, a valid secondmate marker includes a linked secondmate home.
 # Otherwise only a plain checkout is primary, never a linked task worktree.
 fm_primary_scope_matches() {
   local root=$1 state=$2 git_dir git_common_dir

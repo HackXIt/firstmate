@@ -158,8 +158,8 @@ Missing, empty, duplicate, malformed, backend-inconsistent, or task-mismatched e
 Legacy tmux metadata remains cleanup-compatible when its exact window name is `fm-<id>`; opaque non-tmux endpoints require their recorded `endpoint_task_id=` binding.
 `FM_HOME` determines Herdr's home label: the primary home uses `firstmate`, and a secondmate home marked by `.fm-secondmate-home` uses `2ndmate-<secondmate-id>`.
 [`herdr-backend.md`](herdr-backend.md#watching-and-task-containers) owns launcher-bound workspace placement, the label-only fallback, collision handling, and recovery behavior.
-The local `config/herdr-presentation-spaces` file opts a non-topic home out of, or explicitly in to, Herdr's default-on disposable single-task visual projection; a canonical topic home created by `fm <topic>` always keeps workers as tabs in its initial workspace and ignores this visual preference.
-[Presentation spaces](herdr-backend.md#presentation-spaces) owns the accepted values, default, Herdr version floor, migration, behavior, safety limits, recovery contract, and narrow locked session-start cleanup of exact restored idle-shell children.
+The local `config/herdr-presentation-spaces` file selects the Herdr visual projection preference.
+[Presentation spaces](herdr-backend.md#presentation-spaces) owns topic-home exclusion, accepted values, default, Herdr version floor, migration, behavior, safety limits, recovery contract, and narrow locked session-start cleanup of exact restored idle-shell children.
 The setting is inherited into secondmate homes under the primary-authoritative contract owned by [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md).
 For normal herdr operations, `HERDR_SESSION` selects the named session, but destructive test cleanup must not rely on `HERDR_SESSION` alone.
 Use the explicit guarded cleanup path described in [`docs/herdr-backend.md`](herdr-backend.md) instead of `herdr server stop`.
@@ -325,7 +325,7 @@ Each Pi worker receives the canonical topic home and shared checkout on its init
 Herdr's native absolute `pi --session <path>` restart therefore reaches the bridge even though native recovery does not preserve initial explicit extension arguments.
 The bridge restores `FM_HOME` and `FM_ROOT_OVERRIDE` before Firstmate's session-start handlers read home-local state only when the canonical session, standard home directories, versioned topic binding, checkout, and exact Herdr session all agree.
 A primary session header must name the shared checkout; a worker header must instead match exactly one safe Herdr task record for the same topic, named session, and canonical isolated copy, after which only that task's validated Pi extension is reloaded.
-When Herdr resumes an exact session, any inherited `FM_HOME`, `FM_ROOT_OVERRIDE`, or worker identity must match that validated session; missing, relative, repeated, unsupported, linked, unsafe, ambiguous, foreign, or mismatched identities refuse Firstmate recovery rather than trust ambient state, infer a home, or fall back to shared-root state.
+When Herdr resumes an exact session, any inherited `FM_HOME`, `FM_ROOT_OVERRIDE`, `FM_STATE_OVERRIDE`, or worker identity must match that validated session; missing, relative, repeated, unsupported, linked, unsafe, ambiguous, foreign, or mismatched identities refuse Firstmate recovery rather than trust ambient state, infer a home, or fall back to shared-root state.
 An unrelated global Pi session with no topic marker is left unchanged, and recovery outside Herdr is unchanged.
 The launcher records and passes the topic home's canonical physical path, so a base selected through a symlink never becomes recovery authority in its linked spelling.
 This makes Herdr's native Pi session restore preserve topic isolation for the primary and workers after a server or machine restart without setting `FM_HOME` globally.

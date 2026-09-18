@@ -814,7 +814,6 @@ The refusal is a JSON error on stderr with exit 1 and empty stdout, and both cli
 
 ### Pi topic-home recovery
 
-The pre-fix operator path disproved the fixture-only assumption: an absent presentation preference placed the worker in another workspace, while writing `off` masked that trigger, and native Herdr restart retained only `pi --session <absolute-path>` rather than the initial explicit extension arguments.
 Measured 2026-09-18 against Herdr 0.9.0 for both client and server at protocol 22, Pi 0.85.1, and the installed Herdr Pi integration v8.
 The opt-in guard begins through the real `fm <topic>` launcher in a fresh non-default named lab while a different workspace is globally focused and the topic's presentation preference is absent.
 A provider-free completed exchange keeps each real Pi session durable without selecting a model, and the primary drives the real Firstmate spawn path for one Pi worker before restart and another after it.
@@ -1002,8 +1001,8 @@ ok - real Herdr lab: the primary presentation setting inherits into real secondm
 ok - real Herdr lab validation completed on Herdr 0.8.0 with the default-session tripwire intact
 ```
 
-The projected spawn in that run used the historical empty opt-in file, so a home that had already enabled the projection keeps it without any migration step.
-One concurrent cross-home recovery case refused under contention on a loaded machine and passed on an immediate rerun; recovery-path presentation lock contention is a deliberate hard refusal rather than a flat fallback, which default-on now makes reachable from any Herdr home.
+The projected spawn in that run used the historical empty opt-in file, so a non-topic home that had already enabled the projection keeps it without any migration step.
+One concurrent cross-home recovery case refused under contention on a loaded machine and passed on an immediate rerun; recovery-path presentation lock contention is a deliberate hard refusal rather than a flat fallback, which default-on now makes reachable from any non-topic Herdr home.
 That run measured the default-on projection on Herdr 0.8.0 only, while the focus-flash regression below was last run on 0.7.5 before the flip, so neither run covered a defective release under default-on projection; the version floor and the focus-flash suite's Part C close that gap.
 
 The restored-shell session-start cleanup ran on 2026-07-24 against Herdr 0.7.5 protocol 17:

@@ -26,9 +26,11 @@ pass() { printf 'ok - %s\n' "$1"; }
 
 ORIGINAL_PATH=$PATH
 REAL_PI=$(command -v pi)
-SESSION=$("$LAB_HELPER" name firstmate-herdr-topic-recovery) \
+SESSION=$("$LAB_HELPER" name pi-home) \
   || fail "could not generate an isolated Herdr lab session name"
-TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-pi-session-home-herdr-live.XXXXXX")
+# Herdr stores Unix sockets below HOME; keep the fixture prefix short enough
+# for Linux's sockaddr_un limit as well as macOS's.
+TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-pi.XXXXXX")
 LAB_HOME="$TMP_ROOT/home"
 PROJECT="$TMP_ROOT/firstmate"
 SCRATCH_PROJECT="$TMP_ROOT/project"
@@ -427,6 +429,19 @@ jq -s -e --arg session "$SESSION" --arg home "$TOPIC_HOME" '
 pass "every observed primary and worker Pi process is bound to the exact named topic session and canonical home"
 
 PI_VERSION=$(pi --version 2>/dev/null | head -1)
+if [ -n "${FM_PI_RECOVERY_EVIDENCE_DIR:-}" ]; then
+  mkdir -p "$FM_PI_RECOVERY_EVIDENCE_DIR" || fail "could not create evidence directory"
+  cp "$CAPTURE" "$FM_PI_RECOVERY_EVIDENCE_DIR/pi-startup.jsonl" \
+    || fail "could not preserve observed Pi identities"
+  for pane in "$RESTORED_PRIMARY_PANE" "$RESTORED_BEFORE_PANE" "$AFTER_PANE"; do
+    lab pane get "$pane" > "$FM_PI_RECOVERY_EVIDENCE_DIR/pane-$pane.json" \
+      || fail "could not preserve recovered pane placement"
+  done
+  printf 'herdr-client=%s protocol=%s herdr-server=%s protocol=%s pi=%s integration=%s\n' \
+    "$HERDR_CLIENT_VERSION" "$HERDR_CLIENT_PROTOCOL" \
+    "$HERDR_SERVER_VERSION" "$HERDR_SERVER_PROTOCOL" \
+    "$PI_VERSION" "$PI_INTEGRATION_VERSION" > "$FM_PI_RECOVERY_EVIDENCE_DIR/versions.txt"
+fi
 if ! cleanup_all; then
   trap - EXIT
   fail "isolated Herdr lab cleanup failed or the default session changed"
