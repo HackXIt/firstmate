@@ -104,7 +104,7 @@ git clone -q --no-hardlinks "$ROOT" "$PROJECT" \
   || fail "could not create the isolated Firstmate project copy"
 git -C "$PROJECT" checkout -q --detach "$(git -C "$ROOT" rev-parse HEAD)" \
   || fail "could not align the isolated Firstmate project copy"
-git -C "$ROOT" diff --binary HEAD | git -C "$PROJECT" apply \
+git -C "$ROOT" diff --binary HEAD | git -C "$PROJECT" apply --allow-empty \
   || fail "could not overlay the tested Firstmate worktree changes"
 while IFS= read -r untracked; do
   [ -n "$untracked" ] || continue
