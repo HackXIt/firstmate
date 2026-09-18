@@ -258,13 +258,11 @@ main() {
     fi
   fi
   write_topic_home_marker "$home" "$herdr_session"
-  if [ -n "$herdr_session" ]; then
-    . "$FIRSTMATE_ROOT/bin/fm-pi-topic-state-lib.sh"
-    FM_STATE_OVERRIDE=$(CDPATH='' cd -- "${FM_STATE_OVERRIDE:-$home/state}" && pwd -P) \
-      || fail "could not resolve Pi topic state directory"
-    export FM_STATE_OVERRIDE
-    fm_pi_topic_state_bind "$home" "$FIRSTMATE_ROOT" "$herdr_session" "$FM_STATE_OVERRIDE" || exit 1
-  fi
+  . "$FIRSTMATE_ROOT/bin/fm-pi-topic-state-lib.sh"
+  FM_STATE_OVERRIDE=$(CDPATH='' cd -- "${FM_STATE_OVERRIDE:-$home/state}" && pwd -P) \
+    || fail "could not resolve Pi topic state directory"
+  export FM_STATE_OVERRIDE
+  fm_pi_topic_state_bind "$home" "$FIRSTMATE_ROOT" "$herdr_session" "$FM_STATE_OVERRIDE" || exit 1
   ensure_pi_topic_home_recovery_extension
 
   if [ -n "$herdr_session" ]; then

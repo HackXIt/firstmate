@@ -18,6 +18,11 @@ fm_pi_topic_state_bind() {
     return 1
   fi
   if ! ln "$temporary" "$binding" 2>/dev/null; then
+    if [ -n "$session" ] && [ -f "$binding" ] && [ ! -L "$binding" ] \
+       && cmp -s "$binding" <(printf 'home=%s\nroot=%s\nherdr_session=\nstate=%s\n' "$home" "$root" "$state"); then
+      mv "$temporary" "$binding" || { rm -f "$temporary"; return 1; }
+      return 0
+    fi
     if [ ! -f "$binding" ] || [ -L "$binding" ] || ! cmp -s "$temporary" "$binding"; then
       rm -f "$temporary"
       printf 'error: Pi state binding conflicts with this topic launch: %s\n' "$binding" >&2

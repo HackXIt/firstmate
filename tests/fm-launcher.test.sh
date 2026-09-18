@@ -86,7 +86,7 @@ printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
 FAKE_PI
   chmod +x "$dir/pi"
-  for command in cat ln mv rm; do
+  for command in cat cmp ln mktemp mv rm; do
     ln -s "/usr/bin/$command" "$dir/$command"
   done
 }
@@ -536,7 +536,7 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 }
 
 unit_effective_state_binding() {
-  local tmp fakebin safe out status
+  local tmp fakebin safe out status launch_path herdr_env command
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-state.XXXXXX")
   fakebin="$tmp/bin"
   make_fakebin "$fakebin"
@@ -552,6 +552,15 @@ const { writeFileSync, appendFileSync } = require("node:fs");
   const recovery = await import(pathToFileURL(`${root}/.pi/extensions/lib/fm-pi-session-home.ts`));
   if (recovery.trustedFirstmatePiProject(root) !== root) throw Error("primary trust failed");
   if (process.env.FM_STATE_OVERRIDE !== process.env.EXPECTED_STATE) throw Error("state not canonical");
+  if (process.env.HERDR_ENV !== "1") {
+    delete globalThis[Symbol.for("firstmate.pi.session-home-recovery")];
+    process.env.FM_ROOT_OVERRIDE = home;
+    let refused = false;
+    try { recovery.trustedFirstmatePiProject(root); } catch { refused = true; }
+    if (!refused) throw Error("direct launch accepted a foreign checkout identity");
+    appendFileSync(process.env.FM_LAUNCHER_TEST_LOG, "STATE_RECOVERED\n");
+    return;
+  }
   const session = `${home}/pi-sessions/resume.jsonl`;
   writeFileSync(session, JSON.stringify({type: "session", cwd: root}) + "\n");
   for (const key of ["FM_HOME", "FM_ROOT_OVERRIDE", "FM_STATE_OVERRIDE", "FM_PI_TOPIC_LAUNCH"]) delete process.env[key];
@@ -561,23 +570,34 @@ const { writeFileSync, appendFileSync } = require("node:fs");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 PI
   chmod +x "$fakebin/pi"
-  for safe in 1 0; do
+  mkdir -p "$tmp/direct-bin"
+  ln -s "$fakebin/pi" "$tmp/direct-bin/pi"
+  for command in bash env node dirname mkdir readlink sed tr cat cmp ln mktemp mv rm; do
+    ln -s "$(command -v "$command")" "$tmp/direct-bin/$command"
+  done
+  for safe in 1 0 direct; do
+    launch_path="$fakebin:$PATH"
+    herdr_env=1
+    if [ "$safe" = direct ]; then
+      launch_path="$tmp/direct-bin"
+      herdr_env=0
+    fi
     : > "$tmp/log"
     out=$(env -u FM_TASK_ID HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
-      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$launch_path" \
       FM_STATE_OVERRIDE="$tmp/state-link" EXPECTED_STATE="$tmp/effective state" \
-      HERDR_ENV=1 HERDR_SESSION=state-test HERDR_PANE_ID=current \
+      HERDR_ENV="$herdr_env" HERDR_SESSION=state-test HERDR_PANE_ID=current \
       FM_FAKE_HERDR_CURRENT_SAFE="$safe" FM_LAUNCHER_EXECUTE=1 \
       FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
     status=$?
     if [ "$status" -eq 0 ] && [ "$(grep -cx STATE_RECOVERED "$tmp/log")" = 1 ]; then
-      pass "state binding: initial launch and native recovery use canonical override (reuse=$safe)"
+      pass "state binding: launch and applicable recovery use canonical override (mode=$safe)"
     else
       fail "state binding: launch or recovery failed (reuse=$safe): $out"
     fi
     out=$(env HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
-      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
-      FM_STATE_OVERRIDE="$tmp/foreign-state" HERDR_ENV=1 HERDR_SESSION=state-test \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$launch_path" \
+      FM_STATE_OVERRIDE="$tmp/foreign-state" HERDR_ENV="$herdr_env" HERDR_SESSION=state-test \
       FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
     status=$?
     if [ "$status" -ne 0 ]; then
@@ -586,11 +606,26 @@ PI
       fail "state binding: conflicting launch was accepted: $out"
     fi
   done
+  : > "$tmp/log"
+  out=$(env -u FM_TASK_ID HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+    FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
+    FM_STATE_OVERRIDE="$tmp/state-link" EXPECTED_STATE="$tmp/effective state" \
+    HERDR_ENV=1 HERDR_SESSION=state-test HERDR_PANE_ID=current \
+    FM_FAKE_HERDR_CURRENT_SAFE=1 FM_LAUNCHER_EXECUTE=1 \
+    FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" state-direct 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ] && [ "$(grep -cx STATE_RECOVERED "$tmp/log")" = 1 ]; then
+    pass 'state binding: direct topic gains Herdr recovery with the same effective state'
+  else
+    fail "state binding: direct-to-Herdr launch failed: $out"
+  fi
   rm -rf "$tmp"
 }
 
 unit_effective_state_binding
 if [ "${FM_TEST_PI_TOPIC_ONLY:-}" = 1 ]; then
+  unit_without_herdr_falls_back_to_pi_without_wrapping_pi
+  unit_shasum_fallback_generates_stable_topic_key
   exit "$FAILED"
 fi
 unit_noninteractive_missing_topic_refuses
