@@ -124,7 +124,7 @@ build_pi_command() {
   local topic=$1 home=$2 herdr_session=$3 session_dir name cmd
   session_dir="$home/pi-sessions"
   name="firstmate: $topic"
-  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_PI_TOPIC_LAUNCH=1 FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
+  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_PI_TOPIC_LAUNCH=1 FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") FM_STATE_OVERRIDE=$(shell_quote "${FM_STATE_OVERRIDE:-$home/state}") pi"
   cmd="$cmd --session-dir $(shell_quote "$session_dir") --name $(shell_quote "$name")"
   cmd="$cmd -e $(shell_quote "$FIRSTMATE_EXT_GUARD") -e $(shell_quote "$FIRSTMATE_EXT_WATCH")"
   printf '%s\n' "$cmd"
@@ -258,10 +258,18 @@ main() {
     fi
   fi
   write_topic_home_marker "$home" "$herdr_session"
+  if [ -n "$herdr_session" ]; then
+    . "$FIRSTMATE_ROOT/bin/fm-pi-topic-state-lib.sh"
+    FM_STATE_OVERRIDE=$(CDPATH='' cd -- "${FM_STATE_OVERRIDE:-$home/state}" && pwd -P) \
+      || fail "could not resolve Pi topic state directory"
+    export FM_STATE_OVERRIDE
+    fm_pi_topic_state_bind "$home" "$FIRSTMATE_ROOT" "$herdr_session" "$FM_STATE_OVERRIDE" || exit 1
+  fi
   ensure_pi_topic_home_recovery_extension
 
   if [ -n "$herdr_session" ]; then
     run_with_herdr "$topic" "$slug" "$home" "$herdr_session"
+    return $?
   fi
 
   run_pi_direct "$topic" "$home" ""

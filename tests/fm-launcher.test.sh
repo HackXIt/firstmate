@@ -52,6 +52,9 @@ case "${1:-}" in
     fi
     if [ "${2:-}" = run ]; then
       printf 'PANE_RUN_COMMAND\t%s\n' "${4:-}" >> "$FM_LAUNCHER_TEST_LOG"
+      if [ "${FM_LAUNCHER_EXECUTE:-}" = 1 ]; then
+        env -u FM_STATE_OVERRIDE bash -c "${4:-}" || exit 1
+      fi
     fi
     ;;
   --session)
@@ -532,6 +535,64 @@ unit_colliding_slugs_get_isolated_topic_keys() {
   rm -rf "$tmp"
 }
 
+unit_effective_state_binding() {
+  local tmp fakebin safe out status
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-state.XXXXXX")
+  fakebin="$tmp/bin"
+  make_fakebin "$fakebin"
+  mkdir -p "$tmp/effective state" "$tmp/foreign-state"
+  ln -s "$tmp/effective state" "$tmp/state-link"
+  cat > "$fakebin/pi" <<'PI'
+#!/usr/bin/env node
+const { pathToFileURL } = require("node:url");
+const { writeFileSync, appendFileSync } = require("node:fs");
+(async () => {
+  const root = process.env.FM_ROOT_OVERRIDE;
+  const home = process.env.FM_HOME;
+  const recovery = await import(pathToFileURL(`${root}/.pi/extensions/lib/fm-pi-session-home.ts`));
+  if (recovery.trustedFirstmatePiProject(root) !== root) throw Error("primary trust failed");
+  if (process.env.FM_STATE_OVERRIDE !== process.env.EXPECTED_STATE) throw Error("state not canonical");
+  const session = `${home}/pi-sessions/resume.jsonl`;
+  writeFileSync(session, JSON.stringify({type: "session", cwd: root}) + "\n");
+  for (const key of ["FM_HOME", "FM_ROOT_OVERRIDE", "FM_STATE_OVERRIDE", "FM_PI_TOPIC_LAUNCH"]) delete process.env[key];
+  if (recovery.restoreFirstmateHomeFromPiSession(root, ["--session", session]) !== home) throw Error("resume home failed");
+  if (process.env.FM_STATE_OVERRIDE !== process.env.EXPECTED_STATE) throw Error("resume state failed");
+  appendFileSync(process.env.FM_LAUNCHER_TEST_LOG, "STATE_RECOVERED\n");
+})().catch(error => { console.error(error); process.exitCode = 1; });
+PI
+  chmod +x "$fakebin/pi"
+  for safe in 1 0; do
+    : > "$tmp/log"
+    out=$(env -u FM_TASK_ID HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
+      FM_STATE_OVERRIDE="$tmp/state-link" EXPECTED_STATE="$tmp/effective state" \
+      HERDR_ENV=1 HERDR_SESSION=state-test HERDR_PANE_ID=current \
+      FM_FAKE_HERDR_CURRENT_SAFE="$safe" FM_LAUNCHER_EXECUTE=1 \
+      FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] && [ "$(grep -cx STATE_RECOVERED "$tmp/log")" = 1 ]; then
+      pass "state binding: initial launch and native recovery use canonical override (reuse=$safe)"
+    else
+      fail "state binding: launch or recovery failed (reuse=$safe): $out"
+    fi
+    out=$(env HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
+      FM_STATE_OVERRIDE="$tmp/foreign-state" HERDR_ENV=1 HERDR_SESSION=state-test \
+      FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      pass 'state binding: conflicting launch refuses'
+    else
+      fail "state binding: conflicting launch was accepted: $out"
+    fi
+  done
+  rm -rf "$tmp"
+}
+
+unit_effective_state_binding
+if [ "${FM_TEST_PI_TOPIC_ONLY:-}" = 1 ]; then
+  exit "$FAILED"
+fi
 unit_noninteractive_missing_topic_refuses
 unit_interactive_missing_topic_refuses_without_prompt
 unit_symlink_install_resolves_shared_checkout

@@ -4036,6 +4036,7 @@ fi
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
 if [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; then
+  PI_TOPIC_LAUNCH=0
   PI_SESSION_HOME=$FM_HOME_REAL
   if [ "$KIND" = secondmate ]; then
     PI_SESSION_HOME=$(CDPATH='' cd -- "$PROJ_ABS" 2>/dev/null && pwd -P) || {
@@ -4045,20 +4046,9 @@ if [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; then
   fi
   if [ "$BACKEND" = herdr ] && [ "$KIND" != secondmate ] \
      && [ -f "$PI_SESSION_HOME/.fm-topic-home" ]; then
-    PI_STATE_REAL=$(CDPATH='' cd -- "$STATE" && pwd -P) || exit 1
-    PI_STATE_BINDING="$PI_SESSION_HOME/.fm-pi-state"
-    PI_STATE_TEMP=$(umask 077; mktemp "$PI_SESSION_HOME/.fm-pi-state.XXXXXX") || exit 1
-    printf 'home=%s\nroot=%s\nherdr_session=%s\nstate=%s\n' \
-      "$PI_SESSION_HOME" "$(CDPATH='' cd -- "$FM_ROOT" && pwd -P)" "$HERDR_SES" "$PI_STATE_REAL" > "$PI_STATE_TEMP"
-    if ! ln "$PI_STATE_TEMP" "$PI_STATE_BINDING" 2>/dev/null; then
-      if [ ! -f "$PI_STATE_BINDING" ] || [ -L "$PI_STATE_BINDING" ] \
-         || ! cmp -s "$PI_STATE_TEMP" "$PI_STATE_BINDING"; then
-        rm -f "$PI_STATE_TEMP"
-        echo "error: Pi state binding conflicts with this topic launch: $PI_STATE_BINDING" >&2
-        exit 1
-      fi
-    fi
-    rm -f "$PI_STATE_TEMP"
+    . "$SCRIPT_DIR/fm-pi-topic-state-lib.sh"
+    fm_pi_topic_state_bind "$PI_SESSION_HOME" "$FM_ROOT" "$HERDR_SES" "$STATE" || exit 1
+    PI_TOPIC_LAUNCH=1
   fi
   PI_SESSION_DIR="$PI_SESSION_HOME/pi-sessions"
   mkdir -p "$PI_SESSION_DIR" || {
@@ -4115,8 +4105,11 @@ esac
 # Herdr and the other long-lived container daemons do not inherit the invoking
 # Firstmate's topic environment. Give Pi workers the canonical home on their
 # initial launch; native resume re-establishes the same values from the session.
-if { [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; } && [ "$KIND" != secondmate ]; then
-  LAUNCH="FM_PI_TOPIC_LAUNCH=1 FM_ROOT_OVERRIDE=$(shell_quote "$FM_ROOT") FM_HOME=$(shell_quote "$FM_HOME_REAL") $LAUNCH"
+if [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; then
+  if [ "$KIND" != secondmate ]; then
+    LAUNCH="FM_ROOT_OVERRIDE=$(shell_quote "$FM_ROOT") FM_HOME=$(shell_quote "$FM_HOME_REAL") $LAUNCH"
+  fi
+  LAUNCH="FM_PI_TOPIC_LAUNCH=$PI_TOPIC_LAUNCH $LAUNCH"
 fi
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls
