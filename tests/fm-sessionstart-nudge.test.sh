@@ -60,6 +60,49 @@ expect_silent_zero() {
   [ -z "$out" ] || fail "$label must be silent, got: $out"
 }
 
+test_workers_with_primary_root_stand_down() {
+  local primary="$TMP_ROOT/worker-primary-root" secondmate="$TMP_ROOT/worker-secondmate-root"
+  local topic="$TMP_ROOT/worker-topic" root task out status
+  make_primary "$primary"
+  fm_git_worktree "$TMP_ROOT/worker-secondmate-base" "$secondmate" fm/worker-scope
+  mkdir -p "$secondmate/bin" "$topic/state"
+  : > "$secondmate/AGENTS.md"
+  printf 'worker-scope-secondmate\n' > "$secondmate/.fm-secondmate-home"
+  : > "$topic/state/worker.meta"
+  for root in "$primary" "$secondmate"; do
+    (
+      unset FM_TASK_ID
+      . "$ROOT/bin/fm-primary-scope-lib.sh"
+      fm_primary_scope_matches "$root" "$topic/state"
+    ) || fail "an unmarked supervisor lost primary scope: $root"
+    for task in ship-worker scout-worker; do
+      (
+        export FM_HOME="$topic" FM_ROOT_OVERRIDE="$root" FM_TASK_ID="$task"
+        . "$ROOT/bin/fm-primary-scope-lib.sh"
+        if fm_primary_scope_matches "$root" "$topic/state"; then exit 1; fi
+        [ "$FM_HOME" = "$topic" ] && [ "$FM_ROOT_OVERRIDE" = "$root" ] && [ "$FM_TASK_ID" = "$task" ]
+      ) || fail "worker scope accepted primary ownership or changed recovered identity"
+      expect_silent_zero "worker nudge" env FM_HOME="$topic" FM_ROOT_OVERRIDE="$root" \
+        FM_STATE_OVERRIDE="$topic/state" FM_TASK_ID="$task" "$NUDGE"
+      expect_silent_zero "worker startup" env FM_HOME="$topic" FM_ROOT_OVERRIDE="$root" \
+        FM_STATE_OVERRIDE="$topic/state" FM_TASK_ID="$task" "$RUN" --source startup
+      status=0
+      out=$(env FM_HOME="$topic" FM_ROOT_OVERRIDE="$root" FM_STATE_OVERRIDE="$topic/state" \
+        FM_TASK_ID="$task" "$RUN" --source startup --pi-prerequisite 2>&1) || status=$?
+      expect_code 3 "$status" "worker Pi prerequisite stand-down"
+      [ -z "$out" ] || fail "worker Pi prerequisite emitted primary context: $out"
+      status=0
+      out=$(printf '{"stop_hook_active":false}' | env FM_HOME="$topic" FM_ROOT_OVERRIDE="$root" \
+        FM_STATE_OVERRIDE="$topic/state" FM_TASK_ID="$task" "$ROOT/bin/fm-turnend-guard.sh" 2>&1) || status=$?
+      expect_code 0 "$status" "worker turn-end stand-down"
+      [ -z "$out" ] || fail "worker turn-end requested primary supervision: $out"
+      assert_absent "$topic/state/.lock" "worker acquired the topic supervisor lock"
+      assert_absent "$topic/state/.session-start-complete" "worker completed primary startup"
+    done
+  done
+  pass "workers with a recovered primary root retain identity without primary supervision"
+}
+
 test_genuine_primary_nudges() {
   local root="$TMP_ROOT/primary" out prefix_hex status=0
   make_primary "$root"
@@ -1048,6 +1091,7 @@ test_run_reports_a_failed_session_start_as_digest_text() {
   pass "run wrapper: a session start that cannot take the lock still opens the session and says so"
 }
 
+test_workers_with_primary_root_stand_down
 test_genuine_primary_nudges
 test_gate_env_is_silent
 test_gate_common_dir_is_silent
