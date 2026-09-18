@@ -174,8 +174,8 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   status=$?
   expect_code 0 "$status" "spawn with relative home overrides should succeed"
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_ROOT_OVERRIDE='$ROOT' FM_HOME='$home_real'" \
-    "the initial Pi worker did not receive its canonical Firstmate topic identity"
+  assert_contains "$launch" "FM_PI_TOPIC_LAUNCH=1 FM_ROOT_OVERRIDE='$ROOT' FM_HOME='$home_real'" \
+    "the initial Pi worker did not receive its validated canonical Firstmate topic identity"
   assert_contains "$launch" "--session-dir '$home_real/pi-sessions'" \
     "Pi worker sessions are not rooted in the canonical Firstmate home"
   assert_contains "$launch" "-e '$home_real/state/$id.pi-ext.ts'" \

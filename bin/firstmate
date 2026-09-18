@@ -124,7 +124,7 @@ build_pi_command() {
   local topic=$1 home=$2 herdr_session=$3 session_dir name cmd
   session_dir="$home/pi-sessions"
   name="firstmate: $topic"
-  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
+  cmd="cd $(shell_quote "$FIRSTMATE_ROOT") && env FM_PI_TOPIC_LAUNCH=1 FM_HOME=$(shell_quote "$home") FM_ROOT_OVERRIDE=$(shell_quote "$FIRSTMATE_ROOT") HERDR_SESSION=$(shell_quote "$herdr_session") pi"
   cmd="$cmd --session-dir $(shell_quote "$session_dir") --name $(shell_quote "$name")"
   cmd="$cmd -e $(shell_quote "$FIRSTMATE_EXT_GUARD") -e $(shell_quote "$FIRSTMATE_EXT_WATCH")"
   printf '%s\n' "$cmd"
@@ -134,6 +134,7 @@ run_pi_direct() {
   local topic=$1 home=$2 herdr_session=${3:-}
   cd "$FIRSTMATE_ROOT" || fail "could not enter Firstmate checkout: $FIRSTMATE_ROOT"
   exec env \
+    FM_PI_TOPIC_LAUNCH=1 \
     FM_HOME="$home" \
     FM_ROOT_OVERRIDE="$FIRSTMATE_ROOT" \
     HERDR_SESSION="$herdr_session" \

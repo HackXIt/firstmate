@@ -819,6 +819,7 @@ The opt-in guard begins through the real `fm <topic>` launcher in a fresh non-de
 A provider-free completed exchange keeps each real Pi session durable without selecting a model, and the primary drives the real Firstmate spawn path for one Pi worker before restart and another after it.
 The guard stops and provisions only that lab, then requires Herdr's native absolute-session recovery to restore the identical primary and pre-restart worker session files with the canonical topic home before the capture extension loads.
 It also requires both workers to remain tabs in the exact initial primary workspace, the restored primary to retain that workspace identity for the post-recovery spawn, every observed process to carry the exact named session and home, and no presentation journal to appear.
+Project-local proof extensions must load for the initial and recovered primary, the recovered pre-restart worker, and the post-recovery worker without the capture fixture answering `project_trust`; a parked trust prompt therefore fails the same real operator path.
 Recovery supports Herdr's native `pi --session <absolute-path>` form only.
 Conflicting manual combinations such as `--no-session` with `--session`, or ambiguous placement where another option consumes `--session`, are unsupported and may bind topic state.
 The helper removes the disposable lab and requires the default-session tripwire record to remain byte-identical.
@@ -837,6 +838,7 @@ Observed 2026-09-18:
 ok - fm <topic> keeps an absent-config worker as a tab in the initial workspace, not the focused workspace
 ok - native Herdr restart restores primary and worker homes, preserves the initial workspace, and places the next worker there
 ok - every observed primary and worker Pi process is bound to the exact named topic session and canonical home
+ok - initial and recovered primary and worker sessions load their validated projects without human trust input
 ok - isolated Herdr recovery lab is removed with the default session unchanged
 evidence: herdr-client=0.9.0 protocol=22 herdr-server=0.9.0 protocol=22 pi=0.85.1 integration=v8
 ```

@@ -63,7 +63,7 @@ FAKE_HERDR
   cat > "$dir/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
 set -u
-printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" >> "$FM_LAUNCHER_TEST_LOG"
+printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\tFM_PI_TOPIC_LAUNCH=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" "${FM_PI_TOPIC_LAUNCH:-}" >> "$FM_LAUNCHER_TEST_LOG"
 printf 'PI_ARGS' >> "$FM_LAUNCHER_TEST_LOG"
 printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
@@ -77,7 +77,7 @@ without_herdr_fakebin() {
   cat > "$dir/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
 set -u
-printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" >> "$FM_LAUNCHER_TEST_LOG"
+printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\tFM_PI_TOPIC_LAUNCH=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" "${FM_PI_TOPIC_LAUNCH:-}" >> "$FM_LAUNCHER_TEST_LOG"
 printf 'PI_ARGS' >> "$FM_LAUNCHER_TEST_LOG"
 printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
@@ -328,7 +328,7 @@ unit_inside_herdr_reuses_safe_current_workspace() {
   else
     pass 'inside Herdr safe: does not attach nested Herdr TUI'
   fi
-  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=current-herdr' 'inside Herdr safe: execs Pi in the current pane with isolated home'
+  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=current-herdr\tFM_PI_TOPIC_LAUNCH=1' 'inside Herdr safe: execs Pi with validated topic-launch identity'
   rm -rf "$tmp"
 }
 
@@ -445,7 +445,7 @@ unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   fi
   expected_home="$home/.local/share/firstmate/direct-run__753327a3bc4b"
   out=$(cat "$log")
-  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=' 'direct fallback: starts Pi with isolated home and no synthetic Herdr session'
+  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=\tFM_PI_TOPIC_LAUNCH=1' 'direct fallback: starts Pi with validated topic-launch identity and no synthetic Herdr session'
   assert_contains "$out" $'PI_ARGS\t--session-dir\t'"$expected_home/pi-sessions"$'\t--name\tfirstmate: Direct Run\t-e\t'"$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" 'direct fallback: invokes Pi directly with explicit extension flags'
   if printf '%s' "$out" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
     fail "direct fallback: should not send an initial agent prompt: $out"

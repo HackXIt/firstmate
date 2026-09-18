@@ -16,7 +16,23 @@ type SessionHeader = {
   cwd?: unknown;
 };
 
+type FirstmatePiContext = {
+  home: string;
+  trustCwd: string;
+};
+
+type WorkerBinding = {
+  taskId: string;
+  extension: string;
+};
+
+type SharedRecoveryStatus = {
+  context?: FirstmatePiContext;
+  error?: unknown;
+};
+
 const maximumHeaderBytes = 64 * 1024;
+const recoveryStatusKey = Symbol.for("firstmate.pi.session-home-recovery");
 const topicHomeMarker = ".fm-topic-home";
 
 function fail(message: string): never {
@@ -180,9 +196,12 @@ function effectiveStateDirectory(home: string, root: string): string {
   return state;
 }
 
-function workerTaskForSession(state: string, cwd: string): void {
+function workerTaskForSession(state: string, cwd: string, expectedTaskId?: string): WorkerBinding {
   if (!safeDirectory(cwd) || !safeDirectory(state)) {
     fail("the worker session header or topic state directory is unsafe");
+  }
+  if (expectedTaskId && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(expectedTaskId)) {
+    fail("the initial worker identity has an unsafe task id");
   }
   const matches: string[] = [];
   for (const name of readdirSync(state)) {
@@ -197,6 +216,7 @@ function workerTaskForSession(state: string, cwd: string): void {
     }
     const taskId = name.slice(0, -".meta".length);
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) fail("worker metadata has an unsafe task id");
+    if (expectedTaskId && taskId !== expectedTaskId) continue;
     const endpointTaskId = exactRecordValue(contents, "endpoint_task_id");
     const backend = exactRecordValue(contents, "backend");
     const harness = exactRecordValue(contents, "harness");
@@ -213,7 +233,9 @@ function workerTaskForSession(state: string, cwd: string): void {
     matches.push(taskId);
   }
   if (matches.length !== 1) {
-    fail("the Pi session header does not identify exactly one worker in this Herdr topic");
+    fail(expectedTaskId
+      ? "the initial Pi worker identity does not identify one exact task record for this worktree and Herdr topic"
+      : "the Pi session header does not identify exactly one worker in this Herdr topic");
   }
   const taskId = matches[0];
   if (process.env.FM_TASK_ID && process.env.FM_TASK_ID !== taskId) {
@@ -221,14 +243,31 @@ function workerTaskForSession(state: string, cwd: string): void {
   }
   const extension = resolve(state, `${taskId}.pi-ext.ts`);
   if (!safeRegularFile(extension)) fail("the recovered worker extension is missing or unsafe");
-  process.env.FM_TASK_ID = taskId;
-  process.env.FM_PI_RECOVERED_WORKER_EXTENSION = extension;
+  return { taskId, extension };
 }
 
-export function restoreFirstmateHomeFromPiSession(
+function canonicalFirstmateRoot(firstmateRoot: string): string {
+  try {
+    return realpathSync(firstmateRoot);
+  } catch {
+    fail("the shared Firstmate checkout cannot be resolved");
+  }
+}
+
+function validateTopicHome(home: string, root: string): string {
+  if (!isAbsolute(home) || !safeDirectory(home) || !knownTopicHome(home, root)) {
+    fail("the topic home is not bound to this Firstmate checkout and Herdr topic");
+  }
+  for (const child of ["config", "data", "state", "projects", "pi-sessions"]) {
+    if (!safeDirectory(resolve(home, child))) fail(`the topic home has an unsafe or missing ${child} directory`);
+  }
+  return effectiveStateDirectory(home, root);
+}
+
+function restoreFirstmateContextFromPiSession(
   firstmateRoot: string,
-  args: string[] = process.argv.slice(2),
-): string | undefined {
+  args: string[],
+): FirstmatePiContext | undefined {
   if (process.env.HERDR_ENV !== "1") return undefined;
 
   const requestedSession = exactSessionArgument(args);
@@ -237,12 +276,7 @@ export function restoreFirstmateHomeFromPiSession(
     fail("Herdr supplied a missing or non-absolute Pi session path");
   }
 
-  let root: string;
-  try {
-    root = realpathSync(firstmateRoot);
-  } catch {
-    fail("the shared Firstmate checkout cannot be resolved");
-  }
+  const root = canonicalFirstmateRoot(firstmateRoot);
 
   if (!safeRegularFile(requestedSession)) {
     fail("the Pi session must be a canonical, single-linked, owner-controlled regular file");
@@ -254,14 +288,7 @@ export function restoreFirstmateHomeFromPiSession(
   }
 
   const home = dirname(sessionDirectory);
-  if (!safeDirectory(home) || !knownTopicHome(home, root)) {
-    fail("the session directory is not bound to this Firstmate checkout and Herdr topic");
-  }
-  for (const child of ["config", "data", "state", "projects", "pi-sessions"]) {
-    if (!safeDirectory(resolve(home, child))) fail(`the topic home has an unsafe or missing ${child} directory`);
-  }
-
-  const state = effectiveStateDirectory(home, root);
+  const state = validateTopicHome(home, root);
   if (process.env.FM_STATE_OVERRIDE && process.env.FM_STATE_OVERRIDE !== state) {
     fail("the ambient state directory does not match the recovered Pi session");
   }
@@ -269,10 +296,15 @@ export function restoreFirstmateHomeFromPiSession(
   if (header?.type !== "session" || typeof header.cwd !== "string") {
     fail("the Pi session header is missing or invalid");
   }
+  let trustCwd: string;
   if (!sameRealPath(header.cwd, root)) {
-    workerTaskForSession(state, header.cwd);
-  } else if (process.env.FM_TASK_ID) {
-    fail("a primary Pi session carries a foreign ambient worker identity");
+    const worker = workerTaskForSession(state, header.cwd);
+    process.env.FM_TASK_ID = worker.taskId;
+    process.env.FM_PI_RECOVERED_WORKER_EXTENSION = worker.extension;
+    trustCwd = realpathSync(header.cwd);
+  } else {
+    if (process.env.FM_TASK_ID) fail("a primary Pi session carries a foreign ambient worker identity");
+    trustCwd = root;
   }
 
   if (process.env.FM_HOME && process.env.FM_HOME !== home) {
@@ -284,7 +316,46 @@ export function restoreFirstmateHomeFromPiSession(
   process.env.FM_STATE_OVERRIDE = state;
   process.env.FM_HOME = home;
   process.env.FM_ROOT_OVERRIDE = root;
-  return home;
+  return { home, trustCwd };
+}
+
+function validateInitialFirstmatePiLaunch(firstmateRoot: string): FirstmatePiContext | undefined {
+  if (process.env.FM_PI_TOPIC_LAUNCH !== "1") return undefined;
+
+  const root = canonicalFirstmateRoot(firstmateRoot);
+  const home = process.env.FM_HOME;
+  if (!home || process.env.FM_ROOT_OVERRIDE !== root) {
+    fail("the initial Pi launch is missing its canonical Firstmate identity");
+  }
+  const state = validateTopicHome(home, root);
+  if (process.env.FM_STATE_OVERRIDE && process.env.FM_STATE_OVERRIDE !== state) {
+    fail("the initial Pi launch carries a foreign state directory");
+  }
+
+  let trustCwd: string;
+  try {
+    trustCwd = realpathSync(process.cwd());
+  } catch {
+    fail("the initial Pi project cannot be resolved");
+  }
+  if (process.env.FM_TASK_ID) {
+    const worker = workerTaskForSession(state, trustCwd, process.env.FM_TASK_ID);
+    if (worker.taskId !== process.env.FM_TASK_ID) {
+      fail("the initial Pi worker identity does not match its task record");
+    }
+  } else if (trustCwd !== root) {
+    fail("the initial primary Pi project does not match the Firstmate checkout");
+  }
+
+  process.env.FM_STATE_OVERRIDE = state;
+  return { home, trustCwd };
+}
+
+export function restoreFirstmateHomeFromPiSession(
+  firstmateRoot: string,
+  args: string[] = process.argv.slice(2),
+): string | undefined {
+  return restoreFirstmateContextFromPiSession(firstmateRoot, args)?.home;
 }
 
 // The global Pi extension ignores sessions that do not even claim a Firstmate
@@ -297,23 +368,37 @@ export function restoreFirstmateHomeFromOwnedPiSession(
   if (process.env.HERDR_ENV !== "1") return undefined;
 
   if (!argumentsClaimTopicHome(args)) return undefined;
-  return restoreFirstmateHomeFromPiSession(firstmateRoot, args);
+  return restoreFirstmateContextFromPiSession(firstmateRoot, args)?.home;
+}
+
+function sharedRecoveryStatus(): SharedRecoveryStatus | undefined {
+  const shared = globalThis as typeof globalThis & {
+    [recoveryStatusKey]?: SharedRecoveryStatus;
+  };
+  return shared[recoveryStatusKey];
 }
 
 export function requireFirstmatePiSessionHome(firstmateRoot: string): string | undefined {
-  const key = Symbol.for("firstmate.pi.session-home-recovery");
   const shared = globalThis as typeof globalThis & {
-    [key]?: { home?: string; error?: unknown };
+    [recoveryStatusKey]?: SharedRecoveryStatus;
   };
-  if (!shared[key]) {
-    const status: { home?: string; error?: unknown } = {};
-    shared[key] = status;
+  if (!shared[recoveryStatusKey]) {
+    const status: SharedRecoveryStatus = {};
+    shared[recoveryStatusKey] = status;
     try {
-      status.home = restoreFirstmateHomeFromOwnedPiSession(firstmateRoot);
+      status.context = process.env.HERDR_ENV === "1" && argumentsClaimTopicHome(process.argv.slice(2))
+        ? restoreFirstmateContextFromPiSession(firstmateRoot, process.argv.slice(2))
+        : validateInitialFirstmatePiLaunch(firstmateRoot);
     } catch (error) {
       status.error = error;
     }
   }
-  if (shared[key].error) throw shared[key].error;
-  return shared[key].home;
+  const status = shared[recoveryStatusKey]!;
+  if (status.error) throw status.error;
+  return status.context?.home;
+}
+
+export function trustedFirstmatePiProject(firstmateRoot: string): string | undefined {
+  requireFirstmatePiSessionHome(firstmateRoot);
+  return sharedRecoveryStatus()?.context?.trustCwd;
 }

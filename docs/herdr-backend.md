@@ -83,7 +83,8 @@ The supported primary workflow begins with `fm <topic>`.
 Its topic marker keeps presentation projection disabled regardless of the legacy presentation preference, so workers started before or after a restart remain tabs in the exact initial primary workspace rather than becoming separate workspaces.
 Worker placement continues to use the launcher's injected pane, tab, workspace, socket, and named-session identity; mutable labels and the globally focused workspace never select the destination.
 Herdr persists that workspace identity across its native stop and restart, while the topic launcher's Pi session binding restores the matching home for the primary and each worker before Firstmate resumes.
-[`configuration.md`](configuration.md#fm_home) owns topic-home and Pi-session identity validation; this guide owns only the resulting Herdr topology.
+The validated launch and recovery bridge also resolves Pi project trust for that exact primary or worker project, so a native restart never parks the restored tab at a trust prompt.
+[`configuration.md`](configuration.md#fm_home) owns topic-home, Pi-session, and project-trust identity validation; this guide owns only the resulting Herdr topology.
 
 ## Presentation spaces
 

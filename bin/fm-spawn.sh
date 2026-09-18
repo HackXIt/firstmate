@@ -4116,7 +4116,7 @@ esac
 # Firstmate's topic environment. Give Pi workers the canonical home on their
 # initial launch; native resume re-establishes the same values from the session.
 if { [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; } && [ "$KIND" != secondmate ]; then
-  LAUNCH="FM_ROOT_OVERRIDE=$(shell_quote "$FM_ROOT") FM_HOME=$(shell_quote "$FM_HOME_REAL") $LAUNCH"
+  LAUNCH="FM_PI_TOPIC_LAUNCH=1 FM_ROOT_OVERRIDE=$(shell_quote "$FM_ROOT") FM_HOME=$(shell_quote "$FM_HOME_REAL") $LAUNCH"
 fi
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls

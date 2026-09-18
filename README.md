@@ -106,6 +106,7 @@ The launcher requires Pi; when Herdr is on `PATH`, it also requires `jq` to insp
 When Herdr is on `PATH`, the launcher reuses a current Herdr workspace that contains only its single tab and pane, otherwise it creates or uses a topic-specific Herdr session or workspace; the active Herdr tab and pane are named `firstmate`.
 Herdr's native Pi session restore preserves each topic's isolated home automatically; [`docs/configuration.md`](docs/configuration.md#fm_home) owns the exact topic, home, session, and checkout trust boundary.
 The launcher's global Pi recovery bridge ignores unrelated sessions, so manual Pi launches outside Herdr and Herdr launches without `--session` remain unchanged.
+For the exact validated topic project, the bridge also resolves Pi project trust for the current process so initial launch and native recovery do not stop before loading the primary or worker resources; it does not save a broader directory trust grant.
 The launcher opens Pi idle, without sending an initial agent prompt, so you can type the actual request after the session appears.
 The topic is required; omitting it prints usage and stops.
 

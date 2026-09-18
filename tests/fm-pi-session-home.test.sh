@@ -36,6 +36,7 @@ const session = process.env.FM_PI_SESSION_HOME_SESSION;
 const {
   restoreFirstmateHomeFromOwnedPiSession,
   restoreFirstmateHomeFromPiSession,
+  trustedFirstmatePiProject,
 } = await import(pathToFileURL(modulePath).href);
 
 function reset() {
@@ -44,6 +45,7 @@ function reset() {
   delete process.env.FM_ROOT_OVERRIDE;
   delete process.env.FM_TASK_ID;
   delete process.env.FM_PI_RECOVERED_WORKER_EXTENSION;
+  delete process.env.FM_PI_TOPIC_LAUNCH;
   process.env.HERDR_ENV = "1";
   process.env.HERDR_SESSION = "firstmate-topic-home-test";
 }
@@ -253,6 +255,14 @@ console.log("ok - global recovery refuses a malformed invocation that also claim
 
 expectRefusal(["--session", "session.jsonl"], "a relative session path was trusted");
 console.log("ok - relative or unresolved session references are refused");
+
+reset();
+process.env.FM_PI_TOPIC_LAUNCH = "1";
+process.env.FM_HOME = home;
+process.env.FM_ROOT_OVERRIDE = project;
+process.chdir(project);
+assert(trustedFirstmatePiProject(project) === project, "the launcher's validated primary project was not trusted");
+console.log("ok - an attested initial fm <topic> launch trusts only its validated primary project");
 JS
 node_status=$?
 if [ "$node_status" -ne 0 ]; then
@@ -261,12 +271,21 @@ fi
 
 command -v pi >/dev/null 2>&1 || { echo "skip: pi not found for executable restore regression"; exit 0; }
 
-mkdir -p "$PROJECT/.pi/extensions/lib" "$PROJECT/bin"
+PRIMARY_PI_DIR="$TMP_ROOT/primary-pi-agent"
+PRIMARY_TRUST_MARKER="$TMP_ROOT/primary-project-trusted"
+mkdir -p "$PROJECT/.pi/extensions/lib" "$PROJECT/bin" "$PRIMARY_PI_DIR/extensions"
 cp "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" "$PROJECT/.pi/extensions/fm-topic-home-recovery.ts"
 cp "$ROOT/.pi/extensions/fm-calm.ts" "$PROJECT/.pi/extensions/fm-calm.ts"
 cp "$ROOT/.pi/extensions/fm-primary-pi-watch.ts" "$PROJECT/.pi/extensions/fm-primary-pi-watch.ts"
 cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$PROJECT/.pi/extensions/fm-primary-turnend-guard.ts"
 cp "$ROOT/.pi/extensions/lib/"*.ts "$PROJECT/.pi/extensions/lib/"
+ln -s "$PROJECT/.pi/extensions/fm-topic-home-recovery.ts" \
+  "$PRIMARY_PI_DIR/extensions/fm-topic-home-recovery.ts"
+cat > "$PROJECT/.pi/extensions/fm-trust-proof.ts" <<'TS'
+import { writeFileSync } from "node:fs";
+writeFileSync(process.env.FM_PI_TRUST_PROOF!, "trusted\n");
+export default function () {}
+TS
 for script in fm-sessionstart-run.sh fm-turnend-guard.sh fm-arm-pretool-check.sh fm-cd-pretool-check.sh; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$PROJECT/bin/$script"
   chmod +x "$PROJECT/bin/$script"
@@ -276,12 +295,10 @@ rm -f "$HOME_DIR/state/.pi-turnend-extension-loaded" "$HOME_DIR/state/.pi-watch-
 (
   cd "$PROJECT" || exit 1
   env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID -u FM_STATE_OVERRIDE \
-    HOME="$TMP_ROOT/user-home" HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
-    pi --mode rpc --approve --no-context-files --no-skills --no-prompt-templates --no-themes --no-extensions \
-      -e .pi/extensions/fm-topic-home-recovery.ts \
-      -e .pi/extensions/fm-calm.ts \
-      -e .pi/extensions/fm-primary-turnend-guard.ts \
-      -e .pi/extensions/fm-primary-pi-watch.ts \
+    HOME="$TMP_ROOT/user-home" PI_CODING_AGENT_DIR="$PRIMARY_PI_DIR" \
+    FM_PI_TRUST_PROOF="$PRIMARY_TRUST_MARKER" \
+    HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
+    pi --mode rpc --no-context-files --no-skills --no-prompt-templates --no-themes \
       --session "$SESSION" </dev/null > "$TMP_ROOT/pi-rpc.out" 2> "$TMP_ROOT/pi-rpc.err"
 )
 status=$?
@@ -300,7 +317,9 @@ fi
   || { echo "not ok - Pi guard extension touched shared-root state" >&2; exit 1; }
 [ ! -e "$PROJECT/state/.pi-watch-extension-loaded" ] \
   || { echo "not ok - Pi watcher extension touched shared-root state" >&2; exit 1; }
-printf 'ok - pi --session loads Firstmate extensions against the recovered topic home\n'
+[ -f "$PRIMARY_TRUST_MARKER" ] \
+  || { echo "not ok - recovered primary stopped before trusting its validated Firstmate project" >&2; exit 1; }
+printf 'ok - pi --session trusts and loads Firstmate extensions against the recovered topic home\n'
 
 for rejection in legacy mismatched-session foreign-home; do
   rm -f "$HOME_DIR/state/.pi-turnend-extension-loaded" "$HOME_DIR/state/.pi-watch-extension-loaded"
@@ -339,7 +358,8 @@ WORKER_EXTENSION_MARKER="$TMP_ROOT/recovered-worker-extension.loaded"
 WORKER_STATE="$TMP_ROOT/executable-worker-state"
 mkdir -p "$WORKER_STATE"
 GLOBAL_PI_DIR="$TMP_ROOT/pi-agent"
-mkdir -p "$WORKER_COPY" "$WORKER_HOME/config" "$WORKER_HOME/data" "$WORKER_HOME/state" \
+WORKER_TRUST_MARKER="$TMP_ROOT/worker-project-trusted"
+mkdir -p "$WORKER_COPY/.pi/extensions" "$WORKER_HOME/config" "$WORKER_HOME/data" "$WORKER_HOME/state" \
   "$WORKER_HOME/projects" "$WORKER_HOME/pi-sessions" "$GLOBAL_PI_DIR/extensions"
 ln -s "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" \
   "$GLOBAL_PI_DIR/extensions/fm-topic-home-recovery.ts"
@@ -355,6 +375,11 @@ if (process.env.FM_STATE_OVERRIDE !== ${WORKER_STATE@Q}) throw new Error("state 
 writeFileSync(${WORKER_EXTENSION_MARKER@Q}, "loaded\\n");
 export default function () {}
 EOF
+cat > "$WORKER_COPY/.pi/extensions/fm-trust-proof.ts" <<EOF
+import { writeFileSync } from "node:fs";
+writeFileSync(${WORKER_TRUST_MARKER@Q}, "trusted\\n");
+export default function () {}
+EOF
 printf '{"type":"session","version":3,"id":"worker-live","timestamp":"2026-01-01T00:00:00.000Z","cwd":"%s"}\n' \
   "$WORKER_COPY" > "$WORKER_SESSION"
 (
@@ -362,7 +387,7 @@ printf '{"type":"session","version":3,"id":"worker-live","timestamp":"2026-01-01
   env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID -u FM_STATE_OVERRIDE \
     HOME="$TMP_ROOT/user-home" PI_CODING_AGENT_DIR="$GLOBAL_PI_DIR" \
     HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
-    pi --mode rpc --approve --no-context-files --no-skills --no-prompt-templates --no-themes \
+    pi --mode rpc --no-context-files --no-skills --no-prompt-templates --no-themes \
       --session "$WORKER_SESSION" </dev/null > "$TMP_ROOT/pi-worker-rpc.out" 2> "$TMP_ROOT/pi-worker-rpc.err"
 )
 status=$?
@@ -375,4 +400,51 @@ if [ "$status" -ne 0 ]; then
 fi
 [ -f "$WORKER_EXTENSION_MARKER" ] \
   || { echo "not ok - global topic recovery did not reload the worker's generated extension" >&2; exit 1; }
-printf 'ok - global Pi recovery restores a worker home and reloads its generated extension before session_start\n'
+[ -f "$WORKER_TRUST_MARKER" ] \
+  || { echo "not ok - recovered worker stopped before trusting its validated project" >&2; exit 1; }
+printf 'ok - global Pi recovery trusts a worker project and reloads its generated extension before session_start\n'
+
+printf 'endpoint_task_id=worker-other\nbackend=herdr\nharness=pi\nkind=ship\nworktree=%s\nherdr_session=%s\n' \
+  "$WORKER_COPY" "$HERDR_TOPIC_SESSION" > "$WORKER_STATE/worker-other.meta"
+printf 'export default function () {}\n' > "$WORKER_STATE/worker-other.pi-ext.ts"
+rm -f "$WORKER_TRUST_MARKER"
+(
+  cd "$WORKER_COPY" || exit 1
+  env FM_PI_TOPIC_LAUNCH=1 FM_HOME="$WORKER_HOME" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_TASK_ID=worker-live HOME="$TMP_ROOT/user-home" PI_CODING_AGENT_DIR="$GLOBAL_PI_DIR" \
+    HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
+    pi --mode rpc --no-context-files --no-skills --no-prompt-templates --no-themes \
+      --session-dir "$WORKER_HOME/pi-sessions" 'provider-free initial worker fixture' </dev/null \
+      > "$TMP_ROOT/pi-initial-worker-rpc.out" 2> "$TMP_ROOT/pi-initial-worker-rpc.err"
+)
+status=$?
+if [ "$status" -ne 0 ]; then
+  printf 'not ok - Pi executable initial worker launch failed (%s)\n--- stdout ---\n' "$status" >&2
+  cat "$TMP_ROOT/pi-initial-worker-rpc.out" >&2
+  printf '%s\n' '--- stderr ---' >&2
+  cat "$TMP_ROOT/pi-initial-worker-rpc.err" >&2
+  exit 1
+fi
+[ -f "$WORKER_TRUST_MARKER" ] \
+  || { echo "not ok - validated initial worker stopped before trusting its exact worktree" >&2; exit 1; }
+printf 'ok - a validated initial Pi worker trusts only its exact task worktree before loading project resources\n'
+
+rm -f "$WORKER_TRUST_MARKER"
+(
+  cd "$WORKER_COPY" || exit 1
+  env FM_PI_TOPIC_LAUNCH=1 FM_HOME="$WORKER_HOME" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_TASK_ID=worker-missing HOME="$TMP_ROOT/user-home" PI_CODING_AGENT_DIR="$GLOBAL_PI_DIR" \
+    HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
+    pi --mode rpc --no-context-files --no-skills --no-prompt-templates --no-themes \
+      --session-dir "$WORKER_HOME/pi-sessions" 'mismatched initial worker fixture' </dev/null \
+      > "$TMP_ROOT/pi-mismatched-worker-rpc.out" 2> "$TMP_ROOT/pi-mismatched-worker-rpc.err"
+)
+status=$?
+[ "$status" -ne 0 ] \
+  || { echo "not ok - a mismatched initial worker task identity was accepted" >&2; exit 1; }
+[ ! -e "$WORKER_TRUST_MARKER" ] \
+  || { echo "not ok - a mismatched initial worker loaded project resources" >&2; exit 1; }
+grep -F 'does not identify one exact task record for this worktree and Herdr topic' \
+  "$TMP_ROOT/pi-mismatched-worker-rpc.err" >/dev/null \
+  || { echo "not ok - mismatched initial worker refusal omitted its identity diagnostic" >&2; exit 1; }
+printf 'ok - initial Pi worker trust refuses a task identity without one exact matching record\n'

@@ -13,6 +13,14 @@ const recoveredWorkerExtension = restoredHome
   ? process.env.FM_PI_RECOVERED_WORKER_EXTENSION
   : undefined;
 
+function sameRealPath(left: string, right: string): boolean {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
+  }
+}
+
 function safeRecoveredWorkerExtension(path: string): boolean {
   try {
     const info = lstatSync(path);
@@ -23,6 +31,13 @@ function safeRecoveredWorkerExtension(path: string): boolean {
 }
 
 export default async function (pi: any): Promise<void> {
+  pi.on("project_trust", (event: { cwd?: unknown }) => {
+    const trustedProject = recoveryModule.trustedFirstmatePiProject(root);
+    if (!trustedProject || typeof event.cwd !== "string" || !sameRealPath(event.cwd, trustedProject)) {
+      return { trusted: "undecided" };
+    }
+    return { trusted: "yes", remember: false };
+  });
   if (!recoveredWorkerExtension) return;
   if (!safeRecoveredWorkerExtension(recoveredWorkerExtension)) {
     throw new Error("Firstmate topic-session recovery refused: the worker extension changed before loading");

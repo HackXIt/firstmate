@@ -116,8 +116,18 @@ git -C "$SCRATCH_PROJECT" init -q
 git -C "$SCRATCH_PROJECT" config user.name 'Firstmate Tests'
 git -C "$SCRATCH_PROJECT" config user.email 'tests@example.invalid'
 printf '# live recovery fixture\n' > "$SCRATCH_PROJECT/README.md"
-git -C "$SCRATCH_PROJECT" add README.md
+mkdir -p "$SCRATCH_PROJECT/.pi/extensions"
+cat > "$SCRATCH_PROJECT/.pi/extensions/fm-trust-proof.ts" <<'TS'
+import { appendFileSync } from "node:fs";
+const capture = process.env.FM_PI_HOME_RECOVERY_CAPTURE!;
+const role = process.env.FM_TASK_ID ? `worker-${process.env.FM_TASK_ID}` : "primary";
+appendFileSync(capture, `${JSON.stringify({ phase: "project-trust-loaded", role })}\n`);
+export default function () {}
+TS
+git -C "$SCRATCH_PROJECT" add README.md .pi/extensions/fm-trust-proof.ts
 git -C "$SCRATCH_PROJECT" commit -qm initial
+cp "$SCRATCH_PROJECT/.pi/extensions/fm-trust-proof.ts" \
+  "$PROJECT/.pi/extensions/fm-trust-proof.ts"
 git clone -q --bare "$SCRATCH_PROJECT" "$TMP_ROOT/project.origin.git"
 git -C "$SCRATCH_PROJECT" remote add origin "file://$TMP_ROOT/project.origin.git"
 
@@ -137,11 +147,14 @@ function role(): string {
 }
 
 function record(phase: string, reason: unknown = null, sessionFile: unknown = null): void {
+  const recovery = (globalThis as any)[Symbol.for("firstmate.pi.session-home-recovery")];
   appendFileSync(capturePath, `${JSON.stringify({
     phase,
     reason: typeof reason === "string" ? reason : null,
     role: role(),
     pid: process.pid,
+    cwd: process.cwd(),
+    fm_pi_topic_launch: process.env.FM_PI_TOPIC_LAUNCH ?? null,
     fm_home: process.env.FM_HOME ?? null,
     fm_root_override: process.env.FM_ROOT_OVERRIDE ?? null,
     fm_task_id: process.env.FM_TASK_ID ?? null,
@@ -150,6 +163,8 @@ function record(phase: string, reason: unknown = null, sessionFile: unknown = nu
     herdr_tab: process.env.HERDR_TAB_ID ?? null,
     herdr_pane: process.env.HERDR_PANE_ID ?? null,
     session_file: typeof sessionFile === "string" ? sessionFile : null,
+    recovery_context: recovery?.context ?? null,
+    recovery_error: recovery?.error ? String(recovery.error) : null,
     argv: process.argv,
   })}\n`);
 }
@@ -157,7 +172,6 @@ function record(phase: string, reason: unknown = null, sessionFile: unknown = nu
 record("extension-load");
 
 export default function (pi: any): void {
-  pi.on("project_trust", () => ({ trusted: "yes", remember: false }));
   pi.on("session_start", (event: any, ctx: any) => {
     if (event?.reason === "startup") {
       ctx?.sessionManager?.appendMessage?.({
@@ -340,6 +354,8 @@ wait_for_file "$TOPIC_HOME/state/live-before.meta" \
   || fail "the initial worker did not publish task metadata"
 wait_for_capture 'any(.[]; .phase == "session-start" and .role == "worker-live-before" and .fm_home == "'"$TOPIC_HOME"'" and .fm_task_id == "live-before")' \
   || fail "the initial real Pi worker did not start with its topic home and task identity"
+wait_for_capture 'any(.[]; .phase == "project-trust-loaded" and .role == "primary") and any(.[]; .phase == "project-trust-loaded" and .role == "worker-live-before")' \
+  || fail "the initial primary or worker stopped at Pi project trust instead of loading its validated project"
 INITIAL_WORKER=$(jq -sr '[.[] | select(.phase == "session-start" and .role == "worker-live-before")][-1]' "$CAPTURE")
 INITIAL_WORKER_PID=$(printf '%s' "$INITIAL_WORKER" | jq -er '.pid') \
   || fail "the initial worker capture omitted its process id"
@@ -414,8 +430,21 @@ AFTER_PANE=$(sed -n 's/^herdr_pane_id=//p' "$TOPIC_HOME/state/live-after.meta")
 [ -n "$AFTER_PANE" ] || fail "the post-recovery worker metadata omitted its pane"
 [ "$(workspace_of_pane "$AFTER_PANE")" = "$PRIMARY_WORKSPACE" ] \
   || fail "the post-recovery worker was not a tab in the initial primary workspace"
-wait_for_capture 'any(.[]; .phase == "session-start" and .role == "worker-live-after" and .fm_home == "'"$TOPIC_HOME"'" and .fm_task_id == "live-after")' \
-  || fail "the post-recovery Pi worker did not inherit the restored topic home"
+if ! wait_for_capture 'any(.[]; .phase == "session-start" and .role == "worker-live-after" and .fm_home == "'"$TOPIC_HOME"'" and .fm_task_id == "live-after")'; then
+  printf '%s\n' 'diagnostic: Pi startup capture after the post-recovery spawn:' >&2
+  cat "$CAPTURE" >&2
+  printf '%s\n' 'diagnostic: post-recovery worker spawn output:' >&2
+  cat "$TMP_ROOT/spawn-after.out" >&2 || true
+  cat "$TMP_ROOT/spawn-after.err" >&2 || true
+  printf '%s\n' 'diagnostic: post-recovery worker pane:' >&2
+  lab pane read "$AFTER_PANE" --source recent --lines 200 >&2 || true
+  fail "the post-recovery Pi worker did not inherit the restored topic home"
+fi
+wait_for_capture '
+  ([.[] | select(.phase == "project-trust-loaded" and .role == "primary")] | length) >= 2
+  and ([.[] | select(.phase == "project-trust-loaded" and .role == "worker-live-before")] | length) >= 2
+  and any(.[]; .phase == "project-trust-loaded" and .role == "worker-live-after")
+' || fail "primary or worker recovery stopped at Pi project trust instead of loading its validated project"
 [ ! -e "$TOPIC_HOME/state/live-after.herdr-presentation" ] \
   || fail "the post-recovery topic worker created a separate presentation workspace"
 pass "native Herdr restart restores primary and worker homes, preserves the initial workspace, and places the next worker there"
@@ -427,6 +456,7 @@ jq -s -e --arg session "$SESSION" --arg home "$TOPIC_HOME" '
 ' "$CAPTURE" >/dev/null \
   || fail "one or more recovered Pi processes carried a foreign session or home identity"
 pass "every observed primary and worker Pi process is bound to the exact named topic session and canonical home"
+pass "initial and recovered primary and worker sessions load their validated projects without human trust input"
 
 PI_VERSION=$(pi --version 2>/dev/null | head -1)
 if [ -n "${FM_PI_RECOVERY_EVIDENCE_DIR:-}" ]; then
