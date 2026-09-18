@@ -1,3 +1,4 @@
+import { requireFirstmatePiSessionHome } from "./lib/fm-pi-session-home.ts";
 // Firstmate primary watcher bridge for Pi.
 //
 // Session-generation ownership (stated once here):
@@ -128,6 +129,7 @@ function refreshWatchToolShell(
 const extensionFile = fileURLToPath(import.meta.url);
 const extensionDir = dirname(extensionFile);
 const root = resolve(extensionDir, "../..");
+requireFirstmatePiSessionHome(root);
 const fmHome = process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root;
 const fmRoot = process.env.FM_ROOT_OVERRIDE || root;
 const state = process.env.FM_STATE_OVERRIDE || `${fmHome}/state`;

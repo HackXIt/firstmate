@@ -1496,15 +1496,19 @@ test_topic_home_always_uses_worker_tabs() {
   printf 'version=1\nhome=%s\nroot=%s\n' "$dir" "$ROOT" > "$dir/.fm-topic-home"
   fb=$(make_release_fakebin "$dir" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
 
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
+  verdict=$(FM_HOME="$dir" presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
   [ "$verdict" = off ] \
     || fail "an absent presentation config in a topic home must keep workers as tabs, got '$verdict'"
   for value in '' on; do
     printf '%s\n' "$value" > "$config/herdr-presentation-spaces"
-    verdict=$(presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
+    verdict=$(FM_HOME="$dir" presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
     [ "$verdict" = off ] \
       || fail "a topic home must keep workers as tabs even with the legacy '$value' projection opt-in, got '$verdict'"
   done
+  mkdir -p "$dir/external/config"
+  printf 'on\n' > "$dir/external/config/herdr-presentation-spaces"
+  verdict=$(FM_HOME="$dir" presentation_enabled_verdict "$dir/external/config" "$fb" 2>/dev/null)
+  [ "$verdict" = off ] || fail "external config bypassed topic worker tabs"
   pass "herdr presentation: a canonical topic home always keeps workers as tabs in its primary workspace"
 }
 

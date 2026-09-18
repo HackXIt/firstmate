@@ -338,8 +338,8 @@ fm_backend_herdr_presentation_default_supported() {  # <state-dir> [<session>]
 # distinguish an unconfigured default from an explicit opt-in.
 fm_backend_herdr_presentation_enabled() {  # <config-dir> [<state-dir>]
   local config_dir=${1:-} state_dir=${2:-} preference topic_home
-  if [ -n "$config_dir" ]; then
-    topic_home=$(dirname -- "$config_dir")
+  topic_home=$FM_HOME
+  if [ -n "$topic_home" ]; then
     if [ -f "$topic_home/$FM_BACKEND_HERDR_TOPIC_HOME_MARKER" ] \
        && [ ! -L "$topic_home/$FM_BACKEND_HERDR_TOPIC_HOME_MARKER" ]; then
       # shellcheck disable=SC2034

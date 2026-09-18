@@ -26,7 +26,7 @@ HERDR_ENV=1 \
 HERDR_SESSION="$HERDR_TOPIC_SESSION" \
 node --input-type=module <<'JS'
 import { pathToFileURL } from "node:url";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, unlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const modulePath = process.env.FM_PI_SESSION_HOME_MODULE;
@@ -39,6 +39,7 @@ const {
 } = await import(pathToFileURL(modulePath).href);
 
 function reset() {
+  delete process.env.FM_STATE_OVERRIDE;
   delete process.env.FM_HOME;
   delete process.env.FM_ROOT_OVERRIDE;
   delete process.env.FM_TASK_ID;
@@ -169,6 +170,21 @@ assert(process.env.FM_TASK_ID === "worker-a", "worker session did not restore it
 assert(process.env.FM_PI_RECOVERED_WORKER_EXTENSION === resolve(home, "state", "worker-a.pi-ext.ts"), "worker session did not bind its generated extension");
 console.log("ok - exact worker metadata binds a resumed worker session to its topic home and task extension");
 
+const externalState = resolve(dirname(home), "external-state");
+renameSync(resolve(home, "state"), externalState);
+mkdirSync(resolve(home, "state"));
+const stateBinding = resolve(home, ".fm-pi-state");
+writeFileSync(stateBinding, `home=${home}\nroot=${project}\nherdr_session=firstmate-topic-home-test\nstate=${externalState}\n`);
+reset();
+assert(restoreFirstmateHomeFromPiSession(project, ["--session", workerSession]) === home, "external-state worker recovery failed");
+assert(process.env.FM_STATE_OVERRIDE === externalState, "effective state directory was not restored");
+assert(process.env.FM_PI_RECOVERED_WORKER_EXTENSION === resolve(externalState, "worker-a.pi-ext.ts"), "worker extension was not recovered from external state");
+writeFileSync(stateBinding, `home=${home}\nroot=${project}\nherdr_session=foreign-topic\nstate=${externalState}\n`);
+expectRefusal(["--session", workerSession], "foreign state binding was trusted");
+unlinkSync(stateBinding);
+renameSync(externalState, resolve(home, "state"));
+console.log("ok - external worker state is restored only from a matching persisted binding");
+
 reset();
 process.env.FM_TASK_ID = "foreign-worker";
 let workerIdentityRefused = false;
@@ -243,16 +259,6 @@ if [ "$node_status" -ne 0 ]; then
   exit "$node_status"
 fi
 
-for consumer in fm-calm.ts fm-primary-pi-watch.ts fm-primary-turnend-guard.ts; do
-  if grep -Fq 'restoreFirstmateHomeFromPiSession' "$ROOT/.pi/extensions/$consumer"; then
-    printf 'not ok - %s duplicates the global Pi recovery owner\n' "$consumer" >&2
-    exit 1
-  fi
-done
-grep -Fq 'restoreFirstmateHomeFromOwnedPiSession' "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" \
-  || { echo 'not ok - the global Pi recovery entry point does not own native restart' >&2; exit 1; }
-printf 'ok - one global Pi extension owns native topic recovery before ordinary extensions load\n'
-
 command -v pi >/dev/null 2>&1 || { echo "skip: pi not found for executable restore regression"; exit 0; }
 
 mkdir -p "$PROJECT/.pi/extensions/lib" "$PROJECT/bin"
@@ -269,7 +275,7 @@ rm -f "$HOME_DIR/state/.pi-turnend-extension-loaded" "$HOME_DIR/state/.pi-watch-
 
 (
   cd "$PROJECT" || exit 1
-  env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID \
+  env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID -u FM_STATE_OVERRIDE \
     HOME="$TMP_ROOT/user-home" HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
     pi --mode rpc --approve --no-context-files --no-skills --no-prompt-templates --no-themes --no-extensions \
       -e .pi/extensions/fm-topic-home-recovery.ts \
@@ -296,10 +302,42 @@ fi
   || { echo "not ok - Pi watcher extension touched shared-root state" >&2; exit 1; }
 printf 'ok - pi --session loads Firstmate extensions against the recovered topic home\n'
 
+for rejection in legacy mismatched-session foreign-home; do
+  rm -f "$HOME_DIR/state/.pi-turnend-extension-loaded" "$HOME_DIR/state/.pi-watch-extension-loaded"
+  mkdir -p "$PROJECT/state" "$TMP_ROOT/foreign-home/state"
+  if [ "$rejection" = legacy ]; then
+    printf 'version=1\nhome=%s\nroot=%s\n' "$HOME_DIR" "$PROJECT" > "$HOME_DIR/.fm-topic-home"
+  else
+    printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s\n' "$HOME_DIR" "$PROJECT" "$HERDR_TOPIC_SESSION" > "$HOME_DIR/.fm-topic-home"
+  fi
+  (
+    cd "$PROJECT" || exit 1
+    unset FM_HOME FM_ROOT_OVERRIDE FM_TASK_ID FM_STATE_OVERRIDE
+    export HOME="$TMP_ROOT/user-home" HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1
+    [ "$rejection" != mismatched-session ] || export HERDR_SESSION=foreign-topic
+    [ "$rejection" != foreign-home ] || export FM_HOME="$TMP_ROOT/foreign-home"
+    pi --mode rpc --approve --no-context-files --no-skills --no-prompt-templates --no-themes --no-extensions \
+      -e .pi/extensions/fm-topic-home-recovery.ts \
+      -e .pi/extensions/fm-calm.ts \
+      -e .pi/extensions/fm-primary-turnend-guard.ts \
+      -e .pi/extensions/fm-primary-pi-watch.ts \
+      --session "$SESSION" </dev/null > "$TMP_ROOT/pi-rejected.out" 2> "$TMP_ROOT/pi-rejected.err"
+  )
+  for rejected_home in "$HOME_DIR" "$PROJECT" "$TMP_ROOT/foreign-home"; do
+    for marker in .pi-turnend-extension-loaded .pi-watch-extension-loaded; do
+      [ ! -e "$rejected_home/state/$marker" ] \
+        || { echo "not ok - rejected $rejection recovery initialized $rejected_home/$marker" >&2; exit 1; }
+    done
+  done
+  printf 'ok - rejected %s recovery prevents consumer initialization\n' "$rejection"
+done
+
 WORKER_HOME="$TMP_ROOT/executable-worker-home"
 WORKER_COPY="$TMP_ROOT/executable-worker-copy"
 WORKER_SESSION="$WORKER_HOME/pi-sessions/session.jsonl"
 WORKER_EXTENSION_MARKER="$TMP_ROOT/recovered-worker-extension.loaded"
+WORKER_STATE="$TMP_ROOT/executable-worker-state"
+mkdir -p "$WORKER_STATE"
 GLOBAL_PI_DIR="$TMP_ROOT/pi-agent"
 mkdir -p "$WORKER_COPY" "$WORKER_HOME/config" "$WORKER_HOME/data" "$WORKER_HOME/state" \
   "$WORKER_HOME/projects" "$WORKER_HOME/pi-sessions" "$GLOBAL_PI_DIR/extensions"
@@ -307,10 +345,13 @@ ln -s "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" \
   "$GLOBAL_PI_DIR/extensions/fm-topic-home-recovery.ts"
 printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s\n' \
   "$WORKER_HOME" "$ROOT" "$HERDR_TOPIC_SESSION" > "$WORKER_HOME/.fm-topic-home"
+printf 'home=%s\nroot=%s\nherdr_session=%s\nstate=%s\n' \
+  "$WORKER_HOME" "$ROOT" "$HERDR_TOPIC_SESSION" "$WORKER_STATE" > "$WORKER_HOME/.fm-pi-state"
 printf 'endpoint_task_id=worker-live\nbackend=herdr\nharness=pi\nkind=ship\nworktree=%s\nherdr_session=%s\n' \
-  "$WORKER_COPY" "$HERDR_TOPIC_SESSION" > "$WORKER_HOME/state/worker-live.meta"
-cat > "$WORKER_HOME/state/worker-live.pi-ext.ts" <<EOF
+  "$WORKER_COPY" "$HERDR_TOPIC_SESSION" > "$WORKER_STATE/worker-live.meta"
+cat > "$WORKER_STATE/worker-live.pi-ext.ts" <<EOF
 import { writeFileSync } from "node:fs";
+if (process.env.FM_STATE_OVERRIDE !== ${WORKER_STATE@Q}) throw new Error("state override was not restored");
 writeFileSync(${WORKER_EXTENSION_MARKER@Q}, "loaded\\n");
 export default function () {}
 EOF
@@ -318,7 +359,7 @@ printf '{"type":"session","version":3,"id":"worker-live","timestamp":"2026-01-01
   "$WORKER_COPY" > "$WORKER_SESSION"
 (
   cd "$WORKER_COPY" || exit 1
-  env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID \
+  env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_TASK_ID -u FM_STATE_OVERRIDE \
     HOME="$TMP_ROOT/user-home" PI_CODING_AGENT_DIR="$GLOBAL_PI_DIR" \
     HERDR_ENV=1 HERDR_SESSION="$HERDR_TOPIC_SESSION" PI_OFFLINE=1 \
     pi --mode rpc --approve --no-context-files --no-skills --no-prompt-templates --no-themes \

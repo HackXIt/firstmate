@@ -2,15 +2,13 @@ import { lstatSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// This global entry is the sole Pi native-restart owner; ordinary Firstmate
-// extensions consume the restored environment and never run recovery themselves.
 const extensionFile = realpathSync(fileURLToPath(import.meta.url));
 const extensionDir = dirname(extensionFile);
 const root = resolve(extensionDir, "../..");
 const recoveryModule = await import(
   pathToFileURL(resolve(extensionDir, "lib/fm-pi-session-home.ts")).href
 );
-const restoredHome = recoveryModule.restoreFirstmateHomeFromOwnedPiSession(root);
+const restoredHome = recoveryModule.requireFirstmatePiSessionHome(root);
 const recoveredWorkerExtension = restoredHome
   ? process.env.FM_PI_RECOVERED_WORKER_EXTENSION
   : undefined;
