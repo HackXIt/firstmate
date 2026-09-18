@@ -318,7 +318,9 @@ The launcher creates `config/`, `data/`, `state/`, `projects/`, and `pi-sessions
 Every topic home carries an owner-controlled version 2 `.fm-topic-home` binding to its canonical physical home, this shared checkout, and its exact named Herdr session.
 A topic first used without Herdr carries an empty session binding which the launcher may advance once to the exact named session; the launcher likewise renews its matching legacy version 1 binding, while recovery refuses that unbound format and never guesses or replaces a binding to another nonempty session.
 The launcher also installs this checkout's global Pi topic-recovery bridge under the effective Pi agent directory, refusing an occupied path or a link to another checkout.
-That bridge is the single native-restart recovery owner; ordinary Firstmate extensions only consume the environment it restores.
+The bridge and all Firstmate Pi consumers enter one shared recovery boundary before initialization; a refused recovery remains refused even when Pi continues loading other extensions.
+For Herdr topic workers, spawn atomically binds the effective state directory in the owner-controlled `.fm-pi-state` record (`home`, `root`, `herdr_session`, and `state` fields); a conflicting launch binding is refused.
+Recovery validates that record, restores `FM_STATE_OVERRIDE`, and locates worker metadata and extensions there; homes without the record retain the standard `state/` directory.
 Each Pi worker receives the canonical topic home and shared checkout on its initial launch, and primary and Pi-worker sessions are persisted directly under that home's `pi-sessions/`.
 Herdr's native absolute `pi --session <path>` restart therefore reaches the bridge even though native recovery does not preserve initial explicit extension arguments.
 The bridge restores `FM_HOME` and `FM_ROOT_OVERRIDE` before Firstmate's session-start handlers read home-local state only when the canonical session, standard home directories, versioned topic binding, checkout, and exact Herdr session all agree.

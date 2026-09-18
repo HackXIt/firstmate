@@ -164,8 +164,23 @@ function exactRecordValue(contents: string, key: string): string | undefined {
   return matches.length === 1 ? matches[0].slice(prefix.length) : undefined;
 }
 
-function workerTaskForSession(home: string, cwd: string): void {
-  const state = resolve(home, "state");
+function effectiveStateDirectory(home: string, root: string): string {
+  const binding = resolve(home, ".fm-pi-state");
+  if (!pathEntryExists(binding)) return resolve(home, "state");
+  if (!safeRegularFile(binding)) fail("the Pi state binding is unsafe");
+  const contents = readFileBounded(binding, maximumHeaderBytes);
+  const state = exactRecordValue(contents, "state");
+  if (contents.trim().split(/\r?\n/).length !== 4
+    || exactRecordValue(contents, "home") !== home
+    || exactRecordValue(contents, "root") !== root
+    || exactRecordValue(contents, "herdr_session") !== process.env.HERDR_SESSION
+    || !state || !isAbsolute(state) || !safeDirectory(state)) {
+    fail("the Pi state binding does not match this topic or is unsafe");
+  }
+  return state;
+}
+
+function workerTaskForSession(state: string, cwd: string): void {
   if (!safeDirectory(cwd) || !safeDirectory(state)) {
     fail("the worker session header or topic state directory is unsafe");
   }
@@ -246,12 +261,16 @@ export function restoreFirstmateHomeFromPiSession(
     if (!safeDirectory(resolve(home, child))) fail(`the topic home has an unsafe or missing ${child} directory`);
   }
 
+  const state = effectiveStateDirectory(home, root);
+  if (process.env.FM_STATE_OVERRIDE && process.env.FM_STATE_OVERRIDE !== state) {
+    fail("the ambient state directory does not match the recovered Pi session");
+  }
   const header = sessionHeader(sessionPath);
   if (header?.type !== "session" || typeof header.cwd !== "string") {
     fail("the Pi session header is missing or invalid");
   }
   if (!sameRealPath(header.cwd, root)) {
-    workerTaskForSession(home, header.cwd);
+    workerTaskForSession(state, header.cwd);
   } else if (process.env.FM_TASK_ID) {
     fail("a primary Pi session carries a foreign ambient worker identity");
   }
@@ -262,6 +281,7 @@ export function restoreFirstmateHomeFromPiSession(
   if (process.env.FM_ROOT_OVERRIDE && process.env.FM_ROOT_OVERRIDE !== root) {
     fail("the ambient Firstmate checkout does not match the recovered Pi session");
   }
+  process.env.FM_STATE_OVERRIDE = state;
   process.env.FM_HOME = home;
   process.env.FM_ROOT_OVERRIDE = root;
   return home;
@@ -278,4 +298,22 @@ export function restoreFirstmateHomeFromOwnedPiSession(
 
   if (!argumentsClaimTopicHome(args)) return undefined;
   return restoreFirstmateHomeFromPiSession(firstmateRoot, args);
+}
+
+export function requireFirstmatePiSessionHome(firstmateRoot: string): string | undefined {
+  const key = Symbol.for("firstmate.pi.session-home-recovery");
+  const shared = globalThis as typeof globalThis & {
+    [key]?: { home?: string; error?: unknown };
+  };
+  if (!shared[key]) {
+    const status: { home?: string; error?: unknown } = {};
+    shared[key] = status;
+    try {
+      status.home = restoreFirstmateHomeFromOwnedPiSession(firstmateRoot);
+    } catch (error) {
+      status.error = error;
+    }
+  }
+  if (shared[key].error) throw shared[key].error;
+  return shared[key].home;
 }

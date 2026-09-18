@@ -3633,6 +3633,8 @@ EOF
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
 import { execFile } from "node:child_process";
+import { requireFirstmatePiSessionHome } from "$FM_ROOT/.pi/extensions/lib/fm-pi-session-home.ts";
+requireFirstmatePiSessionHome("$FM_ROOT");
 const busyEvent = (state: string, event: string) =>
   new Promise<void>((resolve) => {
     execFile("$FM_ROOT/bin/fm-busy-event.sh", [
@@ -4040,6 +4042,23 @@ if [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; then
       echo "error: secondmate Pi session home cannot be resolved: $PROJ_ABS" >&2
       exit 1
     }
+  fi
+  if [ "$BACKEND" = herdr ] && [ "$KIND" != secondmate ] \
+     && [ -f "$PI_SESSION_HOME/.fm-topic-home" ]; then
+    PI_STATE_REAL=$(CDPATH='' cd -- "$STATE" && pwd -P) || exit 1
+    PI_STATE_BINDING="$PI_SESSION_HOME/.fm-pi-state"
+    PI_STATE_TEMP=$(umask 077; mktemp "$PI_SESSION_HOME/.fm-pi-state.XXXXXX") || exit 1
+    printf 'home=%s\nroot=%s\nherdr_session=%s\nstate=%s\n' \
+      "$PI_SESSION_HOME" "$(CDPATH='' cd -- "$FM_ROOT" && pwd -P)" "$HERDR_SES" "$PI_STATE_REAL" > "$PI_STATE_TEMP"
+    if ! ln "$PI_STATE_TEMP" "$PI_STATE_BINDING" 2>/dev/null; then
+      if [ ! -f "$PI_STATE_BINDING" ] || [ -L "$PI_STATE_BINDING" ] \
+         || ! cmp -s "$PI_STATE_TEMP" "$PI_STATE_BINDING"; then
+        rm -f "$PI_STATE_TEMP"
+        echo "error: Pi state binding conflicts with this topic launch: $PI_STATE_BINDING" >&2
+        exit 1
+      fi
+    fi
+    rm -f "$PI_STATE_TEMP"
   fi
   PI_SESSION_DIR="$PI_SESSION_HOME/pi-sessions"
   mkdir -p "$PI_SESSION_DIR" || {
