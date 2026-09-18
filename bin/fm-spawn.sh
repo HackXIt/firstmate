@@ -265,6 +265,8 @@
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
 #     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
 #     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
+#     __PISESSIONDIR__ canonical Firstmate-home Pi session directory, so Herdr
+#                      recovery can bind primary and worker sessions to one topic
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
 #     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi turn-end extension,
@@ -400,6 +402,10 @@ resolve_directory_input() {
 }
 
 FM_HOME=$(resolve_directory_input FM_HOME "$FM_HOME") || exit 1
+FM_HOME_REAL=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) || {
+  echo "error: FM_HOME directory cannot be resolved: $FM_HOME" >&2
+  exit 1
+}
 if [ -n "${FM_STATE_OVERRIDE:-}" ]; then
   FM_STATE_OVERRIDE=$(resolve_directory_input FM_STATE_OVERRIDE "$FM_STATE_OVERRIDE") || exit 1
 fi
@@ -1103,14 +1109,17 @@ trap spawn_abort_cleanup EXIT
 
 # One bounded lock per live Herdr session/socket, shared across all homes.
 # <session> is required so secondmate and primary spawns serialize against the
-# same session without writing any other home's state directory.
-spawn_herdr_presentation_order_lock_acquire() {
-  local session=${1:-} attempt lock_path
+# same session without writing any other home's state directory. Fresh visual
+# projection may fall back after the default five seconds; exact recovery gets
+# a longer bound because falling back would lose its restart identity.
+spawn_herdr_presentation_order_lock_acquire() {  # [<session>] [<attempts>]
+  local session=${1:-} max_attempts=${2:-50} attempt lock_path
   [ -n "$session" ] || session=$(fm_backend_herdr_session)
+  case "$max_attempts" in ''|*[!0-9]*|0) return 1 ;; esac
   lock_path=$(fm_backend_herdr_presentation_session_lock_path "$session") || return 1
   HERDR_PRESENTATION_ORDER_LOCK="$lock_path"
   attempt=0
-  while [ "$attempt" -lt 50 ]; do
+  while [ "$attempt" -lt "$max_attempts" ]; do
     if fm_lock_try_acquire "$HERDR_PRESENTATION_ORDER_LOCK"; then
       HERDR_PRESENTATION_ORDER_LOCK_HELD=1
       return 0
@@ -1555,7 +1564,7 @@ launch_template() {
       ;;
     opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     pi|pi-signed)
-      printf '%s' '__PIBIN____PITUIMODE__'
+      printf '%s' '__PIBIN____PITUIMODE__ --session-dir __PISESSIONDIR__'
       if [ "$kind" = secondmate ]; then
         printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
       else
@@ -2817,7 +2826,7 @@ case "$BACKEND" in
           echo "error: herdr presentation recovery could not ensure its exact named session" >&2
           exit 1
         }
-        spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" || {
+        spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" 300 || {
           echo "error: herdr presentation recovery could not acquire its session lock; refusing a concurrent resume" >&2
           exit 1
         }
@@ -4024,9 +4033,26 @@ fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
+if [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; then
+  PI_SESSION_HOME=$FM_HOME_REAL
+  if [ "$KIND" = secondmate ]; then
+    PI_SESSION_HOME=$(CDPATH='' cd -- "$PROJ_ABS" 2>/dev/null && pwd -P) || {
+      echo "error: secondmate Pi session home cannot be resolved: $PROJ_ABS" >&2
+      exit 1
+    }
+  fi
+  PI_SESSION_DIR="$PI_SESSION_HOME/pi-sessions"
+  mkdir -p "$PI_SESSION_DIR" || {
+    echo "error: could not create Pi session directory: $PI_SESSION_DIR" >&2
+    exit 1
+  }
+  PI_SESSION_DIR=$(CDPATH='' cd -- "$PI_SESSION_DIR" && pwd -P)
+fi
+
 sq_brief=$(shell_quote "$BRIEF")
 sq_turnend=$(shell_quote "$TURNEND")
 sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
+sq_pisessiondir=$(shell_quote "${PI_SESSION_DIR:-$FM_HOME_REAL/pi-sessions}")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
 sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
 sq_ompext=$(shell_quote "$STATE/$ID.omp-ext.ts")
@@ -4048,6 +4074,7 @@ fi
 LAUNCH=${LAUNCH//__BRIEF__/$sq_brief}
 LAUNCH=${LAUNCH//__TURNEND__/$sq_turnend}
 LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
+LAUNCH=${LAUNCH//__PISESSIONDIR__/$sq_pisessiondir}
 LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OMPEXT__/$sq_ompext}
@@ -4066,6 +4093,12 @@ case "$HARNESS" in
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
     ;;
 esac
+# Herdr and the other long-lived container daemons do not inherit the invoking
+# Firstmate's topic environment. Give Pi workers the canonical home on their
+# initial launch; native resume re-establishes the same values from the session.
+if { [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; } && [ "$KIND" != secondmate ]; then
+  LAUNCH="FM_ROOT_OVERRIDE=$(shell_quote "$FM_ROOT") FM_HOME=$(shell_quote "$FM_HOME_REAL") $LAUNCH"
+fi
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls
 # back to the default ~/.claude store even when firstmate itself runs under a

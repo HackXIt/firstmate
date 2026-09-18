@@ -83,7 +83,7 @@ printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
 FAKE_PI
   chmod +x "$dir/pi"
-  for command in cat mv rm; do
+  for command in cat ln mv rm; do
     ln -s "/usr/bin/$command" "$dir/$command"
   done
 }
@@ -118,6 +118,84 @@ unit_noninteractive_missing_topic_refuses() {
   rm -rf "$tmp"
 }
 
+unit_interactive_missing_topic_refuses_without_prompt() {
+  local tmp fakebin log out status
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-interactive.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  make_fakebin "$fakebin"
+  out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" \
+    FM_LAUNCHER_TEST_LOG="$log" FM_LAUNCHER_TEST_COMMAND="$LAUNCH" python3 2>&1 <<'PY'
+import errno
+import os
+import pty
+import select
+import signal
+import sys
+import time
+
+pid, descriptor = pty.fork()
+if pid == 0:
+    command = os.environ["FM_LAUNCHER_TEST_COMMAND"]
+    os.execve(command, [command], os.environ)
+
+captured = bytearray()
+status = None
+started = time.monotonic()
+eof_sent = False
+while status is None:
+    if not eof_sent and time.monotonic() - started >= 0.2:
+        os.write(descriptor, b"\x04")
+        eof_sent = True
+    readable, _, _ = select.select([descriptor], [], [], 0.05)
+    if readable:
+        try:
+            captured.extend(os.read(descriptor, 65536))
+        except OSError as error:
+            if error.errno != errno.EIO:
+                raise
+    completed, wait_status = os.waitpid(pid, os.WNOHANG)
+    if completed:
+        status = wait_status
+        break
+    if time.monotonic() - started >= 3:
+        os.kill(pid, signal.SIGKILL)
+        _, status = os.waitpid(pid, 0)
+        captured.extend(b"\nPTY_TIMEOUT\n")
+
+try:
+    while True:
+        readable, _, _ = select.select([descriptor], [], [], 0)
+        if not readable:
+            break
+        captured.extend(os.read(descriptor, 65536))
+except OSError as error:
+    if error.errno != errno.EIO:
+        raise
+finally:
+    os.close(descriptor)
+
+sys.stdout.buffer.write(captured)
+sys.exit(os.waitstatus_to_exitcode(status))
+PY
+)
+  status=$?
+  if [ "$status" -ne 0 ] \
+     && printf '%s\n' "$out" | grep -F 'usage: firstmate <topic-or-name>' >/dev/null \
+     && ! printf '%s\n' "$out" | grep -F 'Firstmate topic/name:' >/dev/null \
+     && ! printf '%s\n' "$out" | grep -F 'PTY_TIMEOUT' >/dev/null; then
+    pass 'missing topic: interactive terminal refuses instead of prompting for a shared fallback'
+  else
+    fail "missing topic: interactive terminal did not refuse immediately, status=$status output=$out"
+  fi
+  if [ ! -s "$log" ]; then
+    pass 'missing topic: interactive refusal does not launch Herdr or Pi'
+  else
+    fail "missing topic: interactive refusal launched unexpectedly: $(cat "$log")"
+  fi
+  rm -rf "$tmp"
+}
+
 unit_symlink_install_resolves_shared_checkout() {
   local tmp fakebin install_bin log out status expected_home
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-symlink.XXXXXX")
@@ -144,7 +222,7 @@ unit_symlink_install_resolves_shared_checkout() {
 }
 
 unit_topic_slug_home_and_command() {
-  local tmp fakebin log out status home expected_home command
+  local tmp fakebin log out status home expected_home expected_marker command
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-topic.XXXXXX")
   fakebin="$tmp/bin"
   log="$tmp/log"
@@ -168,10 +246,12 @@ unit_topic_slug_home_and_command() {
   else
     fail 'topic launch: did not create standard per-home directories'
   fi
-  if [ ! -e "$expected_home/.fm-topic-home" ]; then
-    pass 'topic launch: default-base homes need no extra recovery binding'
+  expected_marker=$(printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s' \
+    "$expected_home" "$ROOT" 'firstmate-workflow-improvements__3eaec6ea7e22')
+  if [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$expected_marker" ]; then
+    pass 'topic launch: publishes the canonical topic-home binding at the default base'
   else
-    fail 'topic launch: default-base home received an unnecessary recovery binding'
+    fail 'topic launch: default-base home is missing its canonical recovery binding'
   fi
   out=$(cat "$log")
   assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements__3eaec6ea7e22\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
@@ -183,6 +263,11 @@ unit_topic_slug_home_and_command() {
   assert_contains "$command" "HERDR_SESSION='firstmate-workflow-improvements__3eaec6ea7e22'" 'topic launch: command sets generated Herdr session'
   assert_contains "$command" "--session-dir '$expected_home/pi-sessions'" 'topic launch: command isolates Pi session storage'
   assert_contains "$command" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts' -e '$ROOT/.pi/extensions/fm-primary-pi-watch.ts'" 'topic launch: command loads Firstmate Pi extensions explicitly'
+  if [ "$(readlink "$home/.pi/agent/extensions/fm-topic-home-recovery.ts" 2>/dev/null)" = "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" ]; then
+    pass 'topic launch: installs the global Pi recovery entry point for primary and worker resumes'
+  else
+    fail 'topic launch: did not install the global Pi recovery entry point'
+  fi
   if printf '%s' "$command" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
     fail "topic launch: command should not send an initial agent prompt: $command"
   else
@@ -198,12 +283,15 @@ unit_custom_home_base_writes_recovery_binding() {
   log="$tmp/log"
   make_fakebin "$fakebin"
   expected_home="$tmp/custom-homes/custom-topic"
+  mkdir -p "$expected_home"
+  printf 'version=1\nhome=%s\nroot=%s\n' "$expected_home" "$ROOT" > "$expected_home/.fm-topic-home"
   out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" FIRSTMATE_HOME_BASE="$tmp/custom-homes" \
     PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" custom-topic </dev/null 2>&1)
   status=$?
-  expected_marker=$(printf 'version=1\nhome=%s\nroot=%s' "$expected_home" "$ROOT")
+  expected_marker=$(printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s' \
+    "$expected_home" "$ROOT" 'firstmate-custom-topic')
   if [ "$status" -eq 0 ] && [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$expected_marker" ]; then
-    pass 'custom home base: launcher publishes the owner binding needed for later recovery'
+    pass 'custom home base: launcher advances its legacy owner binding to the exact Herdr session'
   else
     fail "custom home base: recovery binding was not published, status=$status output=$out"
   fi
@@ -445,6 +533,7 @@ unit_colliding_slugs_get_isolated_topic_keys() {
 }
 
 unit_noninteractive_missing_topic_refuses
+unit_interactive_missing_topic_refuses_without_prompt
 unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
 unit_custom_home_base_writes_recovery_binding

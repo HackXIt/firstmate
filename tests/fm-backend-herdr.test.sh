@@ -1490,6 +1490,24 @@ test_presentation_defaults_on_at_or_above_the_floor() {
   pass "herdr presentation: a home that set nothing gets the projection by default at or above the floor"
 }
 
+test_topic_home_always_uses_worker_tabs() {
+  local dir config fb verdict value
+  dir="$TMP_ROOT/presentation-topic-flat"; config="$dir/config"; mkdir -p "$config"
+  printf 'version=1\nhome=%s\nroot=%s\n' "$dir" "$ROOT" > "$dir/.fm-topic-home"
+  fb=$(make_release_fakebin "$dir" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
+
+  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
+  [ "$verdict" = off ] \
+    || fail "an absent presentation config in a topic home must keep workers as tabs, got '$verdict'"
+  for value in '' on; do
+    printf '%s\n' "$value" > "$config/herdr-presentation-spaces"
+    verdict=$(presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
+    [ "$verdict" = off ] \
+      || fail "a topic home must keep workers as tabs even with the legacy '$value' projection opt-in, got '$verdict'"
+  done
+  pass "herdr presentation: a canonical topic home always keeps workers as tabs in its primary workspace"
+}
+
 test_presentation_default_falls_back_below_the_floor() {
   local dir config fb verdict stderr
   dir="$TMP_ROOT/presentation-below-floor"; config="$dir/config"; mkdir -p "$config"
@@ -5233,6 +5251,7 @@ test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
 test_presentation_defaults_on_at_or_above_the_floor
+test_topic_home_always_uses_worker_tabs
 test_presentation_default_falls_back_below_the_floor
 test_presentation_unreadable_release_falls_back
 test_presentation_explicit_opt_in_survives_the_floor

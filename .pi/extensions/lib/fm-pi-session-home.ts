@@ -4,6 +4,7 @@ import {
   fstatSync,
   lstatSync,
   openSync,
+  readdirSync,
   readSync,
   realpathSync,
   statSync,
@@ -91,24 +92,31 @@ function sessionHeader(path: string): SessionHeader | undefined {
   }
 }
 
-function markerTrustsHome(home: string, root: string): boolean {
-  const marker = resolve(home, topicHomeMarker);
-  if (!safeRegularFile(marker)) return false;
-  let values: Record<string, string>;
+function pathEntryExists(path: string): boolean {
   try {
-    values = Object.fromEntries(
-      readFileBounded(marker, 4096)
-        .trim()
-        .split(/\r?\n/)
-        .map((line) => {
-          const separator = line.indexOf("=");
-          return separator > 0 ? [line.slice(0, separator), line.slice(separator + 1)] : ["", ""];
-        }),
-    );
+    lstatSync(path);
+    return true;
   } catch {
     return false;
   }
-  return values.version === "1" && values.home === home && values.root === root;
+}
+
+function topicHomeBinding(home: string, root: string): boolean {
+  const marker = resolve(home, topicHomeMarker);
+  if (!safeRegularFile(marker)) return false;
+  let contents: string;
+  try {
+    contents = readFileBounded(marker, 4096);
+  } catch {
+    return false;
+  }
+  const lines = contents.trim().split(/\r?\n/);
+  const version = exactRecordValue(contents, "version");
+  const boundHome = exactRecordValue(contents, "home");
+  const boundRoot = exactRecordValue(contents, "root");
+  const herdrSession = exactRecordValue(contents, "herdr_session");
+  return version === "2" && lines.length === 4 && boundHome === home && boundRoot === root
+    && herdrSession === process.env.HERDR_SESSION;
 }
 
 function readFileBounded(path: string, maximumBytes: number): string {
@@ -127,18 +135,85 @@ function readFileBounded(path: string, maximumBytes: number): string {
 }
 
 function knownTopicHome(home: string, root: string): boolean {
-  const defaultBase = process.env.HOME ? resolve(process.env.HOME, ".local/share/firstmate") : "";
-  if (isAbsolute(defaultBase) && safeDirectory(defaultBase) && dirname(home) === realpathSync(defaultBase)) {
-    return true;
+  const marker = resolve(home, topicHomeMarker);
+  return pathEntryExists(marker) && topicHomeBinding(home, root);
+}
+
+function argumentsClaimTopicHome(args: string[]): boolean {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--") break;
+    let value: string | undefined;
+    if (arg.startsWith("--session=")) {
+      value = arg.slice("--session=".length);
+    } else if (arg === "--session") {
+      value = args[index + 1];
+    }
+    if (!value || value.startsWith("-")) continue;
+    const candidate = isAbsolute(value) ? value : resolve(value);
+    const sessionDirectory = dirname(candidate);
+    if (basename(sessionDirectory) !== "pi-sessions") continue;
+    if (pathEntryExists(resolve(dirname(sessionDirectory), topicHomeMarker))) return true;
   }
-  return markerTrustsHome(home, root);
+  return false;
+}
+
+function exactRecordValue(contents: string, key: string): string | undefined {
+  const prefix = `${key}=`;
+  const matches = contents.split(/\r?\n/).filter((line) => line.startsWith(prefix));
+  return matches.length === 1 ? matches[0].slice(prefix.length) : undefined;
+}
+
+function workerTaskForSession(home: string, cwd: string): void {
+  const state = resolve(home, "state");
+  if (!safeDirectory(cwd) || !safeDirectory(state)) {
+    fail("the worker session header or topic state directory is unsafe");
+  }
+  const matches: string[] = [];
+  for (const name of readdirSync(state)) {
+    if (!name.endsWith(".meta")) continue;
+    const metadata = resolve(state, name);
+    if (!safeRegularFile(metadata)) fail("worker metadata must be canonical and owner-controlled");
+    let contents: string;
+    try {
+      contents = readFileBounded(metadata, maximumHeaderBytes);
+    } catch {
+      fail("worker metadata is unreadable or outside the accepted size bound");
+    }
+    const taskId = name.slice(0, -".meta".length);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) fail("worker metadata has an unsafe task id");
+    const endpointTaskId = exactRecordValue(contents, "endpoint_task_id");
+    const backend = exactRecordValue(contents, "backend");
+    const harness = exactRecordValue(contents, "harness");
+    const kind = exactRecordValue(contents, "kind");
+    const worktree = exactRecordValue(contents, "worktree");
+    const herdrSession = exactRecordValue(contents, "herdr_session");
+    if (endpointTaskId !== taskId || backend !== "herdr"
+      || (harness !== "pi" && harness !== "pi-signed")
+      || (kind !== "ship" && kind !== "scout")) {
+      continue;
+    }
+    if (!worktree || !isAbsolute(worktree) || !sameRealPath(worktree, cwd)) continue;
+    if (!herdrSession || herdrSession !== process.env.HERDR_SESSION) continue;
+    matches.push(taskId);
+  }
+  if (matches.length !== 1) {
+    fail("the Pi session header does not identify exactly one worker in this Herdr topic");
+  }
+  const taskId = matches[0];
+  if (process.env.FM_TASK_ID && process.env.FM_TASK_ID !== taskId) {
+    fail("the ambient worker identity does not match the recovered Pi session");
+  }
+  const extension = resolve(state, `${taskId}.pi-ext.ts`);
+  if (!safeRegularFile(extension)) fail("the recovered worker extension is missing or unsafe");
+  process.env.FM_TASK_ID = taskId;
+  process.env.FM_PI_RECOVERED_WORKER_EXTENSION = extension;
 }
 
 export function restoreFirstmateHomeFromPiSession(
   firstmateRoot: string,
   args: string[] = process.argv.slice(2),
 ): string | undefined {
-  if (process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE) return undefined;
   if (process.env.HERDR_ENV !== "1") return undefined;
 
   const requestedSession = exactSessionArgument(args);
@@ -165,7 +240,7 @@ export function restoreFirstmateHomeFromPiSession(
 
   const home = dirname(sessionDirectory);
   if (!safeDirectory(home) || !knownTopicHome(home, root)) {
-    fail("the session directory is not bound to an owner-controlled Firstmate topic home");
+    fail("the session directory is not bound to this Firstmate checkout and Herdr topic");
   }
   for (const child of ["config", "data", "state", "projects", "pi-sessions"]) {
     if (!safeDirectory(resolve(home, child))) fail(`the topic home has an unsafe or missing ${child} directory`);
@@ -176,10 +251,31 @@ export function restoreFirstmateHomeFromPiSession(
     fail("the Pi session header is missing or invalid");
   }
   if (!sameRealPath(header.cwd, root)) {
-    fail("the Pi session header belongs to another working directory");
+    workerTaskForSession(home, header.cwd);
+  } else if (process.env.FM_TASK_ID) {
+    fail("a primary Pi session carries a foreign ambient worker identity");
   }
 
+  if (process.env.FM_HOME && process.env.FM_HOME !== home) {
+    fail("the ambient Firstmate home does not match the recovered Pi session");
+  }
+  if (process.env.FM_ROOT_OVERRIDE && process.env.FM_ROOT_OVERRIDE !== root) {
+    fail("the ambient Firstmate checkout does not match the recovered Pi session");
+  }
   process.env.FM_HOME = home;
   process.env.FM_ROOT_OVERRIDE = root;
   return home;
+}
+
+// The global Pi extension ignores sessions that do not even claim a Firstmate
+// topic home. Once a marker is present, the strict recovery path owns every
+// safety and mismatch refusal.
+export function restoreFirstmateHomeFromOwnedPiSession(
+  firstmateRoot: string,
+  args: string[] = process.argv.slice(2),
+): string | undefined {
+  if (process.env.HERDR_ENV !== "1") return undefined;
+
+  if (!argumentsClaimTopicHome(args)) return undefined;
+  return restoreFirstmateHomeFromPiSession(firstmateRoot, args);
 }
