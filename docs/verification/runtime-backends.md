@@ -814,13 +814,15 @@ The refusal is a JSON error on stderr with exit 1 and empty stdout, and both cli
 
 ### Pi topic-home recovery
 
-Measured 2026-09-14 against Herdr 0.9.0 for both client and server at protocol 22, Pi 0.84.2, and the installed Herdr Pi integration v8.
-The opt-in guard creates a provider-free canonical version-3 Pi session under an isolated topic home, launches that exact absolute session in a disposable Herdr lab, and requires Herdr's `agent_session` record to report `kind=path`, `source=herdr:pi`, and the identical path.
-It then restarts only the disposable lab with `FM_HOME` and `FM_ROOT_OVERRIDE` removed from the new server environment and requires Herdr's native Pi recovery command to select that exact session once.
-A global capture records the recovered process before project extensions load and at `session_start`, proving that the process begins without Firstmate home environment and that the tracked Firstmate extensions restore the topic home before their load markers are written.
+The pre-fix operator path disproved the fixture-only assumption: an absent presentation preference placed the worker in another workspace, while writing `off` masked that trigger, and native Herdr restart retained only `pi --session <absolute-path>` rather than the initial explicit extension arguments.
+Measured 2026-09-18 against Herdr 0.9.0 for both client and server at protocol 22, Pi 0.85.1, and the installed Herdr Pi integration v8.
+The opt-in guard begins through the real `fm <topic>` launcher in a fresh non-default named lab while a different workspace is globally focused and the topic's presentation preference is absent.
+A provider-free completed exchange keeps each real Pi session durable without selecting a model, and the primary drives the real Firstmate spawn path for one Pi worker before restart and another after it.
+The guard stops and provisions only that lab, then requires Herdr's native absolute-session recovery to restore the identical primary and pre-restart worker session files with the canonical topic home before the capture extension loads.
+It also requires both workers to remain tabs in the exact initial primary workspace, the restored primary to retain that workspace identity for the post-recovery spawn, every observed process to carry the exact named session and home, and no presentation journal to appear.
 Recovery supports Herdr's native `pi --session <absolute-path>` form only.
 Conflicting manual combinations such as `--no-session` with `--session`, or ambiguous placement where another option consumes `--session`, are unsupported and may bind topic state.
-The same run requires the shared project state to remain untouched and the stopped default session's tripwire record to remain byte-identical through lab cleanup.
+The helper removes the disposable lab and requires the default-session tripwire record to remain byte-identical.
 
 Refresh this guarantee with:
 
@@ -830,14 +832,14 @@ FM_PI_SESSION_HOME_HERDR_LIVE_E2E=1 \
   bin/fm-test-run.sh tests/fm-pi-session-home-herdr-live-e2e.test.sh
 ```
 
-Observed 2026-09-14:
+Observed 2026-09-18:
 
 ```text
-ok - live Herdr records the exact absolute Pi session fixture under the isolated topic home
-ok - native Herdr recovery starts the exact Pi session without FM_HOME or FM_ROOT_OVERRIDE
-ok - restored Firstmate extensions use the topic home and leave shared-project state untouched
+ok - fm <topic> keeps an absent-config worker as a tab in the initial workspace, not the focused workspace
+ok - native Herdr restart restores primary and worker homes, preserves the initial workspace, and places the next worker there
+ok - every observed primary and worker Pi process is bound to the exact named topic session and canonical home
 ok - isolated Herdr recovery lab is removed with the default session unchanged
-evidence: herdr-client=0.9.0 protocol=22 herdr-server=0.9.0 protocol=22 pi=0.84.2 integration=v8
+evidence: herdr-client=0.9.0 protocol=22 herdr-server=0.9.0 protocol=22 pi=0.85.1 integration=v8
 ```
 
 ### Submit confirmation
