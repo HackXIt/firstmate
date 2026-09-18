@@ -1,3 +1,4 @@
+import { requireFirstmatePiSessionHome } from "./lib/fm-pi-session-home.ts";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,7 +10,6 @@ import {
   encodeFirstmateOperationalInput,
   firstmateShellInvocation,
 } from "./lib/fm-operational-input.ts";
-import { restoreFirstmateHomeFromPiSession } from "./lib/fm-pi-session-home.ts";
 
 let guardFollowupActive = false;
 
@@ -18,7 +18,7 @@ type LockOwnership = "owned" | "missing" | "other";
 const extensionFile = fileURLToPath(import.meta.url);
 const extensionDir = dirname(extensionFile);
 const root = resolve(extensionDir, "../..");
-restoreFirstmateHomeFromPiSession(root);
+requireFirstmatePiSessionHome(root);
 const fmHome = process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root;
 const state = process.env.FM_STATE_OVERRIDE || `${fmHome}/state`;
 const marker = `${state}/.pi-turnend-extension-loaded`;

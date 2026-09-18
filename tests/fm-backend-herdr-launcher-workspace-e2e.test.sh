@@ -155,11 +155,13 @@ LAB_SOCKET=$(lab session list --json 2>/dev/null \
 
 # --- scratch world ----------------------------------------------------------
 
-# Presentation spaces are on by default, so every home that asserts the FLAT
-# layout below opts out explicitly rather than depending on that default.
+# A canonical topic home must stay flat with NO presentation config at all.
+# This is the real-Herdr counterpart to the portable gate regression: every
+# primary worker below must remain a tab in the exact initial workspace.
 PRIMARY_HOME="$TMP_ROOT/primary-home"
 mkdir -p "$PRIMARY_HOME/state" "$PRIMARY_HOME/config"
-printf 'off\n' > "$PRIMARY_HOME/config/herdr-presentation-spaces"
+printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s\n' \
+  "$PRIMARY_HOME" "$ROOT" "$HERDR_LAB_SESSION" > "$PRIMARY_HOME/.fm-topic-home"
 SM_ID="lwsm1"
 SM_HOME="$TMP_ROOT/secondmate-home"
 mkdir -p "$SM_HOME/state" "$SM_HOME/config" "$SM_HOME/projects" "$SM_HOME/bin" "$SM_HOME/data"

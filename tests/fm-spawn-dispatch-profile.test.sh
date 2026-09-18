@@ -174,6 +174,10 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   status=$?
   expect_code 0 "$status" "spawn with relative home overrides should succeed"
   launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "FM_PI_TOPIC_LAUNCH=0 FM_ROOT_OVERRIDE='$ROOT' FM_HOME='$home_real'" \
+    "the ordinary Pi worker did not receive its unattested canonical Firstmate identity"
+  assert_contains "$launch" "--session-dir '$home_real/pi-sessions'" \
+    "Pi worker sessions are not rooted in the canonical Firstmate home"
   assert_contains "$launch" "-e '$home_real/state/$id.pi-ext.ts'" \
     "relative FM_STATE_OVERRIDE leaked into Pi's cross-process extension path"
   assert_contains "$launch" "< '$home_real/data/$id/launch-brief.md'" \
@@ -203,6 +207,8 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   status=$?
   expect_code 0 "$status" "spawn with relative FM_HOME defaults should succeed"
   launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--session-dir '$home_real/pi-sessions'" \
+    "relative FM_HOME did not give the Pi worker a canonical topic-home session directory"
   assert_contains "$launch" "-e '$home_real/state/$relative_id.pi-ext.ts'" \
     "relative FM_HOME leaked into Pi's default cross-process extension path"
   assert_contains "$launch" "< '$home_real/data/$relative_id/launch-brief.md'" \
@@ -223,6 +229,8 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   status=$?
   expect_code 0 "$status" "spawn with absolute symlink-spelled FM_HOME defaults should succeed"
   launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--session-dir '$home_real/pi-sessions'" \
+    "a symlink-spelled FM_HOME did not canonicalize the Pi worker session directory"
   assert_contains "$launch" "-e '$linked_home/state/$absolute_id.pi-ext.ts'" \
     "absolute FM_HOME spelling changed in Pi's default cross-process extension path"
   assert_contains "$launch" "< '$linked_home/data/$absolute_id/launch-brief.md'" \
@@ -657,7 +665,7 @@ test_pi_threads_model_and_max_effort() {
   expect_code 0 "$status" "pi spawn with max effort should succeed"
   assert_meta_profile "$HOME_DIR/state/$id.meta" pi openai-codex/gpt-5.6-sol max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --session-dir '$HOME_DIR/pi-sessions' --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
     "pi launch did not force the regular TUI while threading the requested model and max thinking level"
   assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
     "pi launch still exports the removed Calm input-reroute binding"
@@ -679,7 +687,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity() {
   assert_contains "$out" "spawned $id harness=pi-signed" "pi-signed spawn did not preserve its visible identity"
   assert_meta_profile "$HOME_DIR/state/$id.meta" pi-signed openai-codex/gpt-5.6-sol max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --session-dir '$HOME_DIR/pi-sessions' --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
     "pi-signed launch did not force the regular TUI with Pi's model, thinking, and extension semantics"
   assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
     "pi-signed launch lost the canonical typed launch-brief envelope"
@@ -775,7 +783,7 @@ test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   assert_absent "$HOME_DIR/data/$id/launch-brief.md" "secondmate launch received a worker overlay"
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "< '$sm/data/charter.md'" "secondmate launch lost its original charter"
-  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --session-dir '$sm/pi-sessions' -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
     "pi-signed secondmate did not force the regular TUI with Pi's primary extension launch shape"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
     printf '# evidence begin: persistent secondmate\n%s\n' "$out"
@@ -1135,6 +1143,50 @@ SH
   done
 }
 
+test_pi_ordinary_workers_initialize_extensions() {
+  local kind rec id out launch
+  for kind in ordinary secondmate topic; do
+    id="pi-topic-boundary-$kind"
+    rec=$(make_spawn_case "$id" pi "$id")
+    read_case_record "$rec"
+    if [ "$kind" = secondmate ]; then
+      printf '%s\n' parent > "$HOME_DIR/.fm-secondmate-home"
+    elif [ "$kind" = topic ]; then
+      printf 'version=2\nhome=%s\nroot=%s\nherdr_session=topic-test\n' \
+        "$HOME_DIR" "$ROOT" > "$HOME_DIR/.fm-topic-home"
+    fi
+    out=$(FM_PI_TOPIC_LAUNCH=1 run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    expect_code 0 "$?" "ordinary Pi spawn failed: $out"
+    cat > "$FAKEBIN_DIR/pi" <<'PI'
+#!/usr/bin/env node
+const { pathToFileURL } = require("node:url");
+(async () => {
+  const args = process.argv.slice(2);
+  const extension = await import(pathToFileURL(args[args.indexOf("-e") + 1]));
+  const handlers = new Map();
+  extension.default({on: (event, handler) => handlers.set(event, handler)});
+  for (const event of ["agent_start", "agent_settled", "turn_end"]) {
+    if (!handlers.has(event)) throw Error(`missing handler: ${event}`);
+  }
+  await handlers.get("agent_start")();
+  await handlers.get("agent_settled")({}, {isIdle: () => true});
+  handlers.get("turn_end")();
+})().catch(error => { console.error(error); process.exitCode = 1; });
+PI
+    launch=$(cat "$LAUNCH_LOG")
+    (cd "$WT_DIR" && FM_PI_TOPIC_LAUNCH=1 FM_TASK_ID="$id" bash -c "$launch") \
+      || fail "ordinary $kind worker extension failed to initialize"
+    assert_present "$HOME_DIR/state/$id.turn-ended" "ordinary $kind worker lost turn-end notification"
+    pass "ordinary $kind Pi worker preserves extension initialization despite inherited attestation"
+  done
+}
+
+if [ "${FM_TEST_PI_TOPIC_ONLY:-}" = 1 ]; then
+  test_relative_home_overrides_launch_with_absolute_cross_process_paths
+  test_pi_ordinary_workers_initialize_extensions
+  exit 0
+fi
+
 test_launch_environment_allowlist
 test_launch_environment_invalid_config_refuses
 test_launch_environment_inaccessible_config_refuses
@@ -1321,6 +1373,7 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_native_effort_validator_keeps_axes_separate
 test_native_pi_ultra_is_explicit_and_model_scoped
 test_batch_preserves_native_ultra
+test_pi_ordinary_workers_initialize_extensions
 test_pi_threads_model_and_max_effort
 test_pi_tui_mode_probe_is_safe_for_old_and_new_pi
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity

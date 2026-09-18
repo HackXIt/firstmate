@@ -1,3 +1,4 @@
+import { requireFirstmatePiSessionHome } from "./lib/fm-pi-session-home.ts";
 // Firstmate's home-persistent Pi transcript presentation toggle.
 //
 // Verified against Pi 0.81.1 and 0.82.0, which expose session_start replacement
@@ -41,12 +42,11 @@ import {
   setCalmPresentation,
   setCalmStockExportRendering,
 } from "./lib/fm-calm-visibility.ts";
-import { restoreFirstmateHomeFromPiSession } from "./lib/fm-pi-session-home.ts";
 
 const extensionFile = fileURLToPath(import.meta.url);
 const extensionDir = dirname(extensionFile);
 const root = resolve(extensionDir, "../..");
-restoreFirstmateHomeFromPiSession(root);
+requireFirstmatePiSessionHome(root);
 
 // Each presentation adapter probes the exact Pi API it patches. If a future Pi removes
 // that API, only the affected adapter degrades; the rest of Calm keeps working.

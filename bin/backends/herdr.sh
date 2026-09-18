@@ -15,9 +15,10 @@
 # herdr-verification-p2.md "Task container shape", refined by
 # docs/herdr-backend.md "Default task container shape"): ONE herdr workspace PER
 # FIRSTMATE HOME (the primary, and each secondmate, gets its own), ONE herdr TAB
-# per task inside its home's workspace. The default-on presentation projection
-# creates a disposable workspace for a clean fresh task instead unless the home
-# opts out. That
+# per task inside its home's workspace. A topic home launched through `fm <topic>`
+# always keeps that flat shape so every worker remains a tab of the initial
+# workspace. The presentation projection may create a disposable workspace
+# for a clean fresh task in a non-topic home instead. That
 # workspace is a non-authoritative visual projection containing only the normal
 # task pane. Its random token and mutable label never authorize lookup,
 # adoption, reuse, closure, deletion, task ownership, or endpoint selection.
@@ -149,9 +150,11 @@ FM_BACKEND_HERDR_SECONDMATE_MARKER=".fm-secondmate-home"
 # No send, capture, Treehouse, or general task-ownership path reads it.
 FM_BACKEND_HERDR_PRESENTATION_JOURNAL_SUFFIX=".herdr-presentation"
 
-# The config item a home writes to opt out of, or explicitly in to, the
-# projection.
+# The config item a non-topic home writes to opt out of, or explicitly
+# in to, the projection. Topic homes carry the launcher's canonical marker and
+# stay flat regardless of this visual preference.
 FM_BACKEND_HERDR_PRESENTATION_CONFIG="herdr-presentation-spaces"
+FM_BACKEND_HERDR_TOPIC_HOME_MARKER=".fm-topic-home"
 
 # fm_backend_herdr_presentation_preference <config-dir>: the single owner of
 # config/herdr-presentation-spaces parsing. Echoes exactly one of "off", "on"
@@ -326,13 +329,24 @@ fm_backend_herdr_presentation_default_supported() {  # <state-dir> [<session>]
 # fm_backend_herdr_presentation_enabled <config-dir> [<state-dir>]: the one gate
 # bin/fm-spawn.sh consults before projecting this home's children into
 # disposable one-task workspaces (docs/herdr-backend.md "Presentation spaces"
-# owns the full contract). An explicit "off" or "on" is obeyed as written; a
-# home that configured nothing is projected only at or above the version floor,
-# and otherwise falls back to the flat layout with one warning. Sets
+# owns the full contract). A canonically marked topic home always stays flat;
+# its workers belong to the initial `fm <topic>` workspace. In a non-topic
+# home an explicit "off" or "on" is obeyed as written; a home that
+# configured nothing is projected only at or above the version floor, and
+# otherwise falls back to the flat layout with one warning. Sets
 # FM_BACKEND_HERDR_PRESENTATION_PREFERENCE for the new-projection boundary to
 # distinguish an unconfigured default from an explicit opt-in.
 fm_backend_herdr_presentation_enabled() {  # <config-dir> [<state-dir>]
-  local config_dir=${1:-} state_dir=${2:-} preference
+  local config_dir=${1:-} state_dir=${2:-} preference topic_home
+  topic_home=$FM_HOME
+  if [ -n "$topic_home" ]; then
+    if [ -f "$topic_home/$FM_BACKEND_HERDR_TOPIC_HOME_MARKER" ] \
+       && [ ! -L "$topic_home/$FM_BACKEND_HERDR_TOPIC_HOME_MARKER" ]; then
+      # shellcheck disable=SC2034
+      FM_BACKEND_HERDR_PRESENTATION_PREFERENCE=off
+      return 1
+    fi
+  fi
   preference=$(fm_backend_herdr_presentation_preference "$config_dir")
   # bin/fm-spawn.sh reads this out-parameter after sourcing this adapter.
   # shellcheck disable=SC2034

@@ -52,6 +52,9 @@ case "${1:-}" in
     fi
     if [ "${2:-}" = run ]; then
       printf 'PANE_RUN_COMMAND\t%s\n' "${4:-}" >> "$FM_LAUNCHER_TEST_LOG"
+      if [ "${FM_LAUNCHER_EXECUTE:-}" = 1 ]; then
+        env -u FM_STATE_OVERRIDE bash -c "${4:-}" || exit 1
+      fi
     fi
     ;;
   --session)
@@ -63,7 +66,7 @@ FAKE_HERDR
   cat > "$dir/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
 set -u
-printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" >> "$FM_LAUNCHER_TEST_LOG"
+printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\tFM_PI_TOPIC_LAUNCH=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" "${FM_PI_TOPIC_LAUNCH:-}" >> "$FM_LAUNCHER_TEST_LOG"
 printf 'PI_ARGS' >> "$FM_LAUNCHER_TEST_LOG"
 printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
@@ -77,13 +80,13 @@ without_herdr_fakebin() {
   cat > "$dir/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
 set -u
-printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" >> "$FM_LAUNCHER_TEST_LOG"
+printf 'PI_ENV\tFM_HOME=%s\tFM_ROOT_OVERRIDE=%s\tHERDR_SESSION=%s\tFM_PI_TOPIC_LAUNCH=%s\n' "${FM_HOME:-}" "${FM_ROOT_OVERRIDE:-}" "${HERDR_SESSION:-}" "${FM_PI_TOPIC_LAUNCH:-}" >> "$FM_LAUNCHER_TEST_LOG"
 printf 'PI_ARGS' >> "$FM_LAUNCHER_TEST_LOG"
 printf '\t%s' "$@" >> "$FM_LAUNCHER_TEST_LOG"
 printf '\n' >> "$FM_LAUNCHER_TEST_LOG"
 FAKE_PI
   chmod +x "$dir/pi"
-  for command in cat mv rm; do
+  for command in cat cmp ln mktemp mv rm; do
     ln -s "/usr/bin/$command" "$dir/$command"
   done
 }
@@ -118,6 +121,84 @@ unit_noninteractive_missing_topic_refuses() {
   rm -rf "$tmp"
 }
 
+unit_interactive_missing_topic_refuses_without_prompt() {
+  local tmp fakebin log out status
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-interactive.XXXXXX")
+  fakebin="$tmp/bin"
+  log="$tmp/log"
+  make_fakebin "$fakebin"
+  out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" PATH="$fakebin:$PATH" \
+    FM_LAUNCHER_TEST_LOG="$log" FM_LAUNCHER_TEST_COMMAND="$LAUNCH" python3 2>&1 <<'PY'
+import errno
+import os
+import pty
+import select
+import signal
+import sys
+import time
+
+pid, descriptor = pty.fork()
+if pid == 0:
+    command = os.environ["FM_LAUNCHER_TEST_COMMAND"]
+    os.execve(command, [command], os.environ)
+
+captured = bytearray()
+status = None
+started = time.monotonic()
+eof_sent = False
+while status is None:
+    if not eof_sent and time.monotonic() - started >= 0.2:
+        os.write(descriptor, b"\x04")
+        eof_sent = True
+    readable, _, _ = select.select([descriptor], [], [], 0.05)
+    if readable:
+        try:
+            captured.extend(os.read(descriptor, 65536))
+        except OSError as error:
+            if error.errno != errno.EIO:
+                raise
+    completed, wait_status = os.waitpid(pid, os.WNOHANG)
+    if completed:
+        status = wait_status
+        break
+    if time.monotonic() - started >= 3:
+        os.kill(pid, signal.SIGKILL)
+        _, status = os.waitpid(pid, 0)
+        captured.extend(b"\nPTY_TIMEOUT\n")
+
+try:
+    while True:
+        readable, _, _ = select.select([descriptor], [], [], 0)
+        if not readable:
+            break
+        captured.extend(os.read(descriptor, 65536))
+except OSError as error:
+    if error.errno != errno.EIO:
+        raise
+finally:
+    os.close(descriptor)
+
+sys.stdout.buffer.write(captured)
+sys.exit(os.waitstatus_to_exitcode(status))
+PY
+)
+  status=$?
+  if [ "$status" -ne 0 ] \
+     && printf '%s\n' "$out" | grep -F 'usage: firstmate <topic-or-name>' >/dev/null \
+     && ! printf '%s\n' "$out" | grep -F 'Firstmate topic/name:' >/dev/null \
+     && ! printf '%s\n' "$out" | grep -F 'PTY_TIMEOUT' >/dev/null; then
+    pass 'missing topic: interactive terminal refuses instead of prompting for a shared fallback'
+  else
+    fail "missing topic: interactive terminal did not refuse immediately, status=$status output=$out"
+  fi
+  if [ ! -s "$log" ]; then
+    pass 'missing topic: interactive refusal does not launch Herdr or Pi'
+  else
+    fail "missing topic: interactive refusal launched unexpectedly: $(cat "$log")"
+  fi
+  rm -rf "$tmp"
+}
+
 unit_symlink_install_resolves_shared_checkout() {
   local tmp fakebin install_bin log out status expected_home
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-symlink.XXXXXX")
@@ -144,7 +225,7 @@ unit_symlink_install_resolves_shared_checkout() {
 }
 
 unit_topic_slug_home_and_command() {
-  local tmp fakebin log out status home expected_home command
+  local tmp fakebin log out status home expected_home expected_marker command
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-topic.XXXXXX")
   fakebin="$tmp/bin"
   log="$tmp/log"
@@ -168,10 +249,12 @@ unit_topic_slug_home_and_command() {
   else
     fail 'topic launch: did not create standard per-home directories'
   fi
-  if [ ! -e "$expected_home/.fm-topic-home" ]; then
-    pass 'topic launch: default-base homes need no extra recovery binding'
+  expected_marker=$(printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s' \
+    "$expected_home" "$ROOT" 'firstmate-workflow-improvements__3eaec6ea7e22')
+  if [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$expected_marker" ]; then
+    pass 'topic launch: publishes the canonical topic-home binding at the default base'
   else
-    fail 'topic launch: default-base home received an unnecessary recovery binding'
+    fail 'topic launch: default-base home is missing its canonical recovery binding'
   fi
   out=$(cat "$log")
   assert_contains "$out" $'HERDR_ARGS\tworkspace\tcreate\t--cwd\t'"$ROOT"$'\t--label\tfirstmate-workflow-improvements__3eaec6ea7e22\t--session\tfirstmate-workflow-improvements__3eaec6ea7e22' 'topic launch: creates topic-specific Herdr workspace in topic session'
@@ -183,6 +266,11 @@ unit_topic_slug_home_and_command() {
   assert_contains "$command" "HERDR_SESSION='firstmate-workflow-improvements__3eaec6ea7e22'" 'topic launch: command sets generated Herdr session'
   assert_contains "$command" "--session-dir '$expected_home/pi-sessions'" 'topic launch: command isolates Pi session storage'
   assert_contains "$command" "-e '$ROOT/.pi/extensions/fm-primary-turnend-guard.ts' -e '$ROOT/.pi/extensions/fm-primary-pi-watch.ts'" 'topic launch: command loads Firstmate Pi extensions explicitly'
+  if [ "$(readlink "$home/.pi/agent/extensions/fm-topic-home-recovery.ts" 2>/dev/null)" = "$ROOT/.pi/extensions/fm-topic-home-recovery.ts" ]; then
+    pass 'topic launch: installs the global Pi recovery entry point for primary and worker resumes'
+  else
+    fail 'topic launch: did not install the global Pi recovery entry point'
+  fi
   if printf '%s' "$command" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
     fail "topic launch: command should not send an initial agent prompt: $command"
   else
@@ -198,12 +286,15 @@ unit_custom_home_base_writes_recovery_binding() {
   log="$tmp/log"
   make_fakebin "$fakebin"
   expected_home="$tmp/custom-homes/custom-topic"
+  mkdir -p "$expected_home"
+  printf 'version=1\nhome=%s\nroot=%s\n' "$expected_home" "$ROOT" > "$expected_home/.fm-topic-home"
   out=$(env -u HERDR_ENV -u HERDR_SESSION HOME="$tmp/home" FIRSTMATE_HOME_BASE="$tmp/custom-homes" \
     PATH="$fakebin:$PATH" FM_LAUNCHER_TEST_LOG="$log" "$LAUNCH" custom-topic </dev/null 2>&1)
   status=$?
-  expected_marker=$(printf 'version=1\nhome=%s\nroot=%s' "$expected_home" "$ROOT")
+  expected_marker=$(printf 'version=2\nhome=%s\nroot=%s\nherdr_session=%s' \
+    "$expected_home" "$ROOT" 'firstmate-custom-topic')
   if [ "$status" -eq 0 ] && [ "$(cat "$expected_home/.fm-topic-home" 2>/dev/null)" = "$expected_marker" ]; then
-    pass 'custom home base: launcher publishes the owner binding needed for later recovery'
+    pass 'custom home base: launcher advances its legacy owner binding to the exact Herdr session'
   else
     fail "custom home base: recovery binding was not published, status=$status output=$out"
   fi
@@ -240,7 +331,7 @@ unit_inside_herdr_reuses_safe_current_workspace() {
   else
     pass 'inside Herdr safe: does not attach nested Herdr TUI'
   fi
-  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=current-herdr' 'inside Herdr safe: execs Pi in the current pane with isolated home'
+  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=current-herdr\tFM_PI_TOPIC_LAUNCH=1' 'inside Herdr safe: execs Pi with validated topic-launch identity'
   rm -rf "$tmp"
 }
 
@@ -357,7 +448,7 @@ unit_without_herdr_falls_back_to_pi_without_wrapping_pi() {
   fi
   expected_home="$home/.local/share/firstmate/direct-run__753327a3bc4b"
   out=$(cat "$log")
-  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=' 'direct fallback: starts Pi with isolated home and no synthetic Herdr session'
+  assert_contains "$out" $'PI_ENV\tFM_HOME='"$expected_home"$'\tFM_ROOT_OVERRIDE='"$ROOT"$'\tHERDR_SESSION=\tFM_PI_TOPIC_LAUNCH=1' 'direct fallback: starts Pi with validated topic-launch identity and no synthetic Herdr session'
   assert_contains "$out" $'PI_ARGS\t--session-dir\t'"$expected_home/pi-sessions"$'\t--name\tfirstmate: Direct Run\t-e\t'"$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" 'direct fallback: invokes Pi directly with explicit extension flags'
   if printf '%s' "$out" | grep -F 'This is an isolated Firstmate session' >/dev/null; then
     fail "direct fallback: should not send an initial agent prompt: $out"
@@ -444,7 +535,101 @@ unit_colliding_slugs_get_isolated_topic_keys() {
   rm -rf "$tmp"
 }
 
+unit_effective_state_binding() {
+  local tmp fakebin safe out status launch_path herdr_env command
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-launcher-state.XXXXXX")
+  fakebin="$tmp/bin"
+  make_fakebin "$fakebin"
+  mkdir -p "$tmp/effective state" "$tmp/foreign-state"
+  ln -s "$tmp/effective state" "$tmp/state-link"
+  cat > "$fakebin/pi" <<'PI'
+#!/usr/bin/env node
+const { pathToFileURL } = require("node:url");
+const { writeFileSync, appendFileSync } = require("node:fs");
+(async () => {
+  const root = process.env.FM_ROOT_OVERRIDE;
+  const home = process.env.FM_HOME;
+  const recovery = await import(pathToFileURL(`${root}/.pi/extensions/lib/fm-pi-session-home.ts`));
+  if (recovery.trustedFirstmatePiProject(root) !== root) throw Error("primary trust failed");
+  if (process.env.FM_STATE_OVERRIDE !== process.env.EXPECTED_STATE) throw Error("state not canonical");
+  if (process.env.HERDR_ENV !== "1") {
+    delete globalThis[Symbol.for("firstmate.pi.session-home-recovery")];
+    process.env.FM_ROOT_OVERRIDE = home;
+    let refused = false;
+    try { recovery.trustedFirstmatePiProject(root); } catch { refused = true; }
+    if (!refused) throw Error("direct launch accepted a foreign checkout identity");
+    appendFileSync(process.env.FM_LAUNCHER_TEST_LOG, "STATE_RECOVERED\n");
+    return;
+  }
+  const session = `${home}/pi-sessions/resume.jsonl`;
+  writeFileSync(session, JSON.stringify({type: "session", cwd: root}) + "\n");
+  for (const key of ["FM_HOME", "FM_ROOT_OVERRIDE", "FM_STATE_OVERRIDE", "FM_PI_TOPIC_LAUNCH"]) delete process.env[key];
+  if (recovery.restoreFirstmateHomeFromPiSession(root, ["--session", session]) !== home) throw Error("resume home failed");
+  if (process.env.FM_STATE_OVERRIDE !== process.env.EXPECTED_STATE) throw Error("resume state failed");
+  appendFileSync(process.env.FM_LAUNCHER_TEST_LOG, "STATE_RECOVERED\n");
+})().catch(error => { console.error(error); process.exitCode = 1; });
+PI
+  chmod +x "$fakebin/pi"
+  mkdir -p "$tmp/direct-bin"
+  ln -s "$fakebin/pi" "$tmp/direct-bin/pi"
+  for command in bash env node dirname mkdir readlink sed tr cat cmp ln mktemp mv rm; do
+    ln -s "$(command -v "$command")" "$tmp/direct-bin/$command"
+  done
+  for safe in 1 0 direct; do
+    launch_path="$fakebin:$PATH"
+    herdr_env=1
+    if [ "$safe" = direct ]; then
+      launch_path="$tmp/direct-bin"
+      herdr_env=0
+    fi
+    : > "$tmp/log"
+    out=$(env -u FM_TASK_ID HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$launch_path" \
+      FM_STATE_OVERRIDE="$tmp/state-link" EXPECTED_STATE="$tmp/effective state" \
+      HERDR_ENV="$herdr_env" HERDR_SESSION=state-test HERDR_PANE_ID=current \
+      FM_FAKE_HERDR_CURRENT_SAFE="$safe" FM_LAUNCHER_EXECUTE=1 \
+      FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] && [ "$(grep -cx STATE_RECOVERED "$tmp/log")" = 1 ]; then
+      pass "state binding: launch and applicable recovery use canonical override (mode=$safe)"
+    else
+      fail "state binding: launch or recovery failed (reuse=$safe): $out"
+    fi
+    out=$(env HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+      FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$launch_path" \
+      FM_STATE_OVERRIDE="$tmp/foreign-state" HERDR_ENV="$herdr_env" HERDR_SESSION=state-test \
+      FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" "state-$safe" 2>&1)
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      pass 'state binding: conflicting launch refuses'
+    else
+      fail "state binding: conflicting launch was accepted: $out"
+    fi
+  done
+  : > "$tmp/log"
+  out=$(env -u FM_TASK_ID HOME="$tmp/user" PI_CODING_AGENT_DIR="$tmp/pi-agent" \
+    FIRSTMATE_HOME_BASE="$tmp/topics" PATH="$fakebin:$PATH" \
+    FM_STATE_OVERRIDE="$tmp/state-link" EXPECTED_STATE="$tmp/effective state" \
+    HERDR_ENV=1 HERDR_SESSION=state-test HERDR_PANE_ID=current \
+    FM_FAKE_HERDR_CURRENT_SAFE=1 FM_LAUNCHER_EXECUTE=1 \
+    FM_LAUNCHER_TEST_LOG="$tmp/log" "$LAUNCH" state-direct 2>&1)
+  status=$?
+  if [ "$status" -eq 0 ] && [ "$(grep -cx STATE_RECOVERED "$tmp/log")" = 1 ]; then
+    pass 'state binding: direct topic gains Herdr recovery with the same effective state'
+  else
+    fail "state binding: direct-to-Herdr launch failed: $out"
+  fi
+  rm -rf "$tmp"
+}
+
+unit_effective_state_binding
+if [ "${FM_TEST_PI_TOPIC_ONLY:-}" = 1 ]; then
+  unit_without_herdr_falls_back_to_pi_without_wrapping_pi
+  unit_shasum_fallback_generates_stable_topic_key
+  exit "$FAILED"
+fi
 unit_noninteractive_missing_topic_refuses
+unit_interactive_missing_topic_refuses_without_prompt
 unit_symlink_install_resolves_shared_checkout
 unit_topic_slug_home_and_command
 unit_custom_home_base_writes_recovery_binding
