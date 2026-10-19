@@ -443,8 +443,10 @@ test_autonomous_execution_contract_is_in_every_worker_brief() {
       "$kind brief still frames routine technical choices as captain work"
     assert_grep 'Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes' "$brief" \
       "$kind brief omitted the no-churn technical-choice rule"
-    assert_grep 'Escalate only an unresolved product or requirement choice' "$brief" \
+    assert_grep 'Escalate only a genuinely ambiguous product or requirement choice, or a material architecture choice' "$brief" \
       "$kind brief omitted the narrow escalation boundary"
+    assert_grep 'when it would materially expand or alter the accepted contract and accepted intent does not settle it' "$brief" \
+      "$kind brief omitted the architecture expansion condition"
     assert_grep 'Ordinary internal architecture stays autonomous' "$brief" \
       "$kind brief treated ordinary architecture as a captain gate"
     assert_grep 'Repeated corrections escalate only when they accrete a questionable abstraction' "$brief" \

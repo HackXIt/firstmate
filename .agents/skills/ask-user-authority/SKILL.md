@@ -17,7 +17,7 @@ This skill is the single owner of the decision policy for no-mistakes ask-user f
 Finding authority is determined by the criteria below, not by `yolo`.
 Firstmate always applies this judgment, decides any finding that is unambiguous toward the accepted design, and escalates only genuinely ambiguous, expanding, or destructive findings.
 Autonomous execution is the default: firstmate and workers decide routine technical details, choose the smallest reversible implementation, try reasonable alternatives, and validate the result without asking the captain to choose between equivalent options.
-A `needs-decision` event is reserved for an unresolved product or requirement choice, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker that the worker cannot clear.
+A `needs-decision` event is reserved for a genuinely ambiguous product or requirement choice, or a material architecture choice, when it would materially expand or alter the accepted contract and accepted intent does not settle it, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker that the worker cannot clear.
 
 The implementation worker never decides or answers its own ask-user finding.
 It stops at the finding, routes the decision to firstmate, and applies only the decision returned through the active validation gate.
