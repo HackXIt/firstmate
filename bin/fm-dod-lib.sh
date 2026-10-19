@@ -190,6 +190,20 @@ fm_ask_user_escalation_block() {  # <data-dir> <task-id>
 EOF
 }
 
+# The worker brief is a generated interface, so this short pointer makes the
+# autonomy default visible even when the worker has not loaded the full
+# ask-user-authority skill. That skill owns the complete decision procedure.
+fm_worker_autonomy_block() {
+  cat <<'EOF'
+# Autonomous execution
+Routine technical choices are yours to make without waiting for the captain.
+Choose the smallest reversible implementation, try a reasonable alternative when the first path is blocked, run the relevant checks, and record the rationale in your final result.
+Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes, or other implementation details.
+Escalate only an unresolved product or requirement choice, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker you cannot clear.
+When escalation is genuinely required, load the `ask-user-authority` skill and report the concrete work already attempted, the exact remaining choice, the recommended default, and the consequence of each option.
+EOF
+}
+
 fm_dod_block() {  # <mode> <task-id>
   local mode=$1 id=$2
   case "$mode" in

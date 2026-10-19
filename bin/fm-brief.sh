@@ -195,6 +195,7 @@ ASK_USER_BLOCK=
 if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
   ASK_USER_BLOCK=$(fm_ask_user_escalation_block "$DATA" "$ID")
 fi
+AUTONOMY_BLOCK=$(fm_worker_autonomy_block)
 
 shell_quote() {
   printf "'"
@@ -260,6 +261,7 @@ You do not generate your own work.
 Act only on tasks the main firstmate routes to you.
 Never start a survey, audit, or "find improvements" sweep on your own initiative; that is not your job and it is unwanted.
 
+$AUTONOMY_BLOCK
 # The captain and the parent channel
 Nobody reads this chat: the captain and the main firstmate see only what is appended to $STATUS_FILE, and a captain-facing sentence that is not appended there has not been sent.
 That file is your parent channel, and in this home it IS the captain: every sentence you would say to the captain, and every outcome the local AGENTS.md tells a firstmate to bring to the captain, is one appended line there, never chat.
@@ -386,6 +388,7 @@ This is a SCOUT task: the deliverable is a written report, not a PR.
 The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
 The report is the only thing that survives, so anything worth keeping must be in it.
 
+$AUTONOMY_BLOCK
 # Rules
 1. Never push to any remote and never open a PR.
 2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
@@ -406,8 +409,7 @@ The report is the only thing that survives, so anything worth keeping must be in
    \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) and firstmate rechecks at that time instead.
    Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
-6. If a decision belongs to a human (product choices, destructive actions),
-   append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+6. Use \`needs-decision: {summary of options}\` only for the exceptional decisions listed in the Autonomous execution section, and stop until firstmate responds.
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
@@ -475,6 +477,7 @@ If the top-level path is the primary checkout or not the worktree you were launc
 
 1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
 
+$AUTONOMY_BLOCK
 # Rules
 $RULE1
 2. Stay inside this worktree; modify nothing outside it.
@@ -496,8 +499,7 @@ $RULE1
    a scheduled window): firstmate then leaves your idle pane alone and rechecks it on a long
    cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
-6. If a decision belongs above the implementation worker (product choices, destructive actions),
-   append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+6. Use \`needs-decision: {summary of options}\` only for the exceptional decisions listed in the Autonomous execution section, and stop until firstmate responds.
 $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.

@@ -424,6 +424,35 @@ test_ask_user_escalation_format() {
   pass "fm-brief.sh: no-mistakes ask-user findings use one event plus a verbatim snapshot"
 }
 
+test_autonomous_execution_contract_is_in_every_worker_brief() {
+  local home kind id brief
+  home="$TMP_ROOT/autonomous-execution-home"
+  mkdir -p "$home/data"
+
+  for kind in scout ship; do
+    id="brief-autonomy-$kind"
+    if [ "$kind" = scout ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_grep '# Autonomous execution' "$brief" \
+      "$kind brief omitted the autonomous execution contract"
+    assert_grep 'Routine technical choices are yours to make without waiting for the captain.' "$brief" \
+      "$kind brief still frames routine technical choices as captain work"
+    assert_grep 'Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes' "$brief" \
+      "$kind brief omitted the no-churn technical-choice rule"
+    assert_grep 'Escalate only an unresolved product or requirement choice' "$brief" \
+      "$kind brief omitted the narrow escalation boundary"
+    assert_grep 'load the `ask-user-authority` skill' "$brief" \
+      "$kind brief omitted the decision-policy owner"
+    assert_grep 'only for the exceptional decisions listed in the Autonomous execution section' "$brief" \
+      "$kind brief retained the broad needs-decision trigger"
+  done
+  pass "fm-brief.sh: worker briefs default to autonomous technical execution"
+}
+
 test_ship_project_memory_wording() {
   local home id brief
   home="$TMP_ROOT/project-memory-home"
@@ -1006,6 +1035,7 @@ test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ask_user_escalation_format
+test_autonomous_execution_contract_is_in_every_worker_brief
 test_ship_project_memory_wording
 test_matching_project_context_is_injected_into_ship_and_scout_briefs
 test_unconfigured_project_context_keeps_brief_bytes_unchanged
