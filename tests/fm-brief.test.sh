@@ -445,6 +445,10 @@ test_autonomous_execution_contract_is_in_every_worker_brief() {
       "$kind brief omitted the no-churn technical-choice rule"
     assert_grep 'Escalate only an unresolved product or requirement choice' "$brief" \
       "$kind brief omitted the narrow escalation boundary"
+    assert_grep 'Ordinary internal architecture stays autonomous' "$brief" \
+      "$kind brief treated ordinary architecture as a captain gate"
+    assert_grep 'Repeated corrections escalate only when they accrete a questionable abstraction' "$brief" \
+      "$kind brief treated technical difficulty as a captain gate"
     assert_grep 'load the `ask-user-authority` skill' "$brief" \
       "$kind brief omitted the decision-policy owner"
     assert_grep 'only for the exceptional decisions listed in the Autonomous execution section' "$brief" \

@@ -199,7 +199,8 @@ fm_worker_autonomy_block() {
 Routine technical choices are yours to make without waiting for the captain.
 Choose the smallest reversible implementation, try a reasonable alternative when the first path is blocked, run the relevant checks, and record the rationale in your final result.
 Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes, or other implementation details.
-Escalate only an unresolved product or requirement choice, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker you cannot clear.
+Ordinary internal architecture stays autonomous; escalate an architecture choice only when it would expand or alter the accepted contract. Repeated corrections escalate only when they accrete a questionable abstraction that would expand or alter that contract, not merely because the work is difficult or takes multiple rounds.
+Escalate only an unresolved product or requirement choice, a material architecture choice not settled by accepted intent, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker you cannot clear.
 When escalation is genuinely required, load the `ask-user-authority` skill and report the concrete work already attempted, the exact remaining choice, the recommended default, and the consequence of each option.
 EOF
 }

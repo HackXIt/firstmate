@@ -34,8 +34,8 @@ It stops at the finding, routes the decision to firstmate, and applies only the 
    This includes selecting among equivalent libraries, APIs, test strategies, refactor shapes, and other reversible implementation details when the accepted behavior remains unchanged.
 4. Escalate only genuinely ambiguous findings:
    - a Fix that would materially expand the contract by adding a new guarantee, threat model, subsystem, abstraction, compatibility surface, state machine, continuous-monitoring requirement, generalized framework, or broader architecture not required by the accepted intent
-   - a product or architecture call not settled by accepted intent
-   - repeated same-theme findings when incremental corrections are preserving a questionable abstraction rather than closing independent defects
+   - a product choice, or a material architecture choice that would expand or alter the accepted contract, when accepted intent does not settle it
+   - repeated same-theme findings only when incremental corrections are accreting a questionable abstraction in a way that would expand or alter the accepted contract, rather than closing independent defects; difficulty or multiple fix rounds alone do not escalate
    - destructive, irreversible, and genuinely security-sensitive choices, which always escalate under the stronger existing captain boundary
 5. Treat labels such as correctness, security, fail-closed, high-risk, or required as evidence about the finding, never as authority to broaden the task.
 
