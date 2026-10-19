@@ -301,9 +301,11 @@ Classify the deliverable:
 - **Ship** is the default and produces a project change through the selected delivery mode; once implementation is authorized, dispatch a ship and keep any remaining bounded research inside it unless unresolved uncertainty could materially change whether or what to build.
 - **Scout** produces knowledge in `data/<id>/report.md`, never a PR, and is appropriate for investigation, diagnosis, planning, reproduction, or audit work when the captain explicitly requests a separate knowledge or design deliverable or unresolved uncertainty could materially change whether or what to build.
 
-If established evidence already answers an informational question, relay it without a design-only scout; when implementation intent is unclear, answer and ask one concise implementation question when useful rather than dispatching speculative design work.
+If established evidence already answers an informational question, relay it without a design-only scout.
+When a captain asks to inspect work and finalize, complete, fix, or ship it, treat that as implementation intent: inspect the relevant code, make the smallest reversible changes, validate them, and report the outcome instead of returning research alone.
+Ask one concise implementation question only when no safe implementation objective can be inferred or the requested action requires captain authority under `ask-user-authority`.
 Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
-A diagnostic request, report, recommendation, or implementation-ready finding is evidence, not authorization to change code.
+A diagnostic request, report, recommendation, or implementation-ready finding alone is evidence, not authorization to change code; an explicit captain request to fix, complete, finalize, or ship is implementation intent.
 Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.
@@ -354,6 +356,8 @@ Never merge a red PR under either setting unless a current explicit captain inst
 Destructive, irreversible, and security-sensitive merges still escalate.
 Without a current explicit captain instruction that states the concrete merge, the green default stands, and standing `yolo` cannot authorize a red merge; section 1 owns when such an instruction overrides a Firstmate-written standing rule within its exact scope.
 Load `ask-user-authority` before deciding any ask-user finding; the implementation worker never answers its own finding.
+Routine technical choices are firstmate and worker decisions, not captain gates: choose the smallest reversible path, try reasonable alternatives, validate it, and continue without asking the captain to pick equivalent libraries, APIs, tests, refactors, branches, commits, or documentation.
+The `ask-user-authority` skill owns the exact exceptional escalation categories and decision procedure.
 Use `bin/fm-pr-merge.sh` for every task PR merge so merge metadata is recorded and an unproved merge is refused instead of reported as landed, and use `bin/fm-merge-local.sh` for approved local-only landing; never call a lower-level merge command around their guards.
 After an autonomous merge, give the captain a one-line full-URL or local-main outcome.
 
@@ -373,7 +377,7 @@ Custody recovery settles branch ownership, not content: the worker must replace 
 Apart from that single supported abort, do not hand-edit, commit, restart, or start a second validation run while the obsolete run still owns the branch.
 Once ownership is settled, validate exactly once against that final head so no obsolete or intermediate head is ever treated as authoritative.
 
-An ask-user finding returns as `needs-decision`; firstmate loads `ask-user-authority` and either decides or escalates per that skill.
+An ask-user finding returns as `needs-decision`; firstmate loads `ask-user-authority`, decides routine or accepted-intent corrections itself, and escalates only the narrow exceptional choices that skill defines.
 Send the same worker one exact decision naming the decision key, step, action, affected finding IDs, instructions where needed, and exact response command, passing `--resolve-key` so the worker's open decision record closes at answer time.
 Require the matching `resolved` event, forbid `--yes`, and require the worker to process every synchronous return until completion or a genuinely new escalation.
 Resume fleet supervision immediately after the decision lands.

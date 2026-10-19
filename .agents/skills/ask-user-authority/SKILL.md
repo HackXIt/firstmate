@@ -16,6 +16,8 @@ This skill is the single owner of the decision policy for no-mistakes ask-user f
 `AGENTS.md` section 7 points here and does not restate this procedure.
 Finding authority is determined by the criteria below, not by `yolo`.
 Firstmate always applies this judgment, decides any finding that is unambiguous toward the accepted design, and escalates only genuinely ambiguous, expanding, or destructive findings.
+Autonomous execution is the default: firstmate and workers decide routine technical details, choose the smallest reversible implementation, try reasonable alternatives, and validate the result without asking the captain to choose between equivalent options.
+A `needs-decision` event is reserved for a genuinely ambiguous product or requirement choice, or a material architecture choice, when it would materially expand or alter the accepted contract and accepted intent does not settle it, a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker that the worker cannot clear.
 
 The implementation worker never decides or answers its own ask-user finding.
 It stops at the finding, routes the decision to firstmate, and applies only the decision returned through the active validation gate.
@@ -29,14 +31,18 @@ It stops at the finding, routes the decision to firstmate, and applies only the 
    The smallest downstream changes needed to keep that behavior correct, add behavioral tests where an executable contract exists, or keep documentation accurate remain within scope even when they touch files not named at intake.
    Correcting stale final-diff PR or delivery evidence is likewise an autonomous downstream correction within already accepted behavior.
 3. Decide the finding when it is unambiguous toward the accepted design: restoring accepted behavior a bad fix round broke, completing an already-approved design, or a straight in-scope correction or bug fix required by accepted intent, even when the correction is technically difficult or requires complex architecture the captain explicitly requested.
+   This includes selecting among equivalent libraries, APIs, test strategies, refactor shapes, and other reversible implementation details when the accepted behavior remains unchanged.
 4. Escalate only genuinely ambiguous findings:
    - a Fix that would materially expand the contract by adding a new guarantee, threat model, subsystem, abstraction, compatibility surface, state machine, continuous-monitoring requirement, generalized framework, or broader architecture not required by the accepted intent
-   - a product or architecture call not settled by accepted intent
-   - repeated same-theme findings when incremental corrections are preserving a questionable abstraction rather than closing independent defects
+   - a product choice, or a material architecture choice that would expand or alter the accepted contract, when accepted intent does not settle it
+   - repeated same-theme findings only when incremental corrections are accreting a questionable abstraction in a way that would expand or alter the accepted contract, rather than closing independent defects; difficulty or multiple fix rounds alone do not escalate
    - destructive, irreversible, and genuinely security-sensitive choices, which always escalate under the stronger existing captain boundary
 5. Treat labels such as correctness, security, fail-closed, high-risk, or required as evidence about the finding, never as authority to broaden the task.
 
 ## Captain-facing escalation
+
+Before escalating, complete the bounded work that does not depend on the captain: inspect the relevant code and evidence, try the smallest reversible path, and record the concrete consequence of the remaining choice.
+Do not ask the captain to verify a routine fact, select between equivalent technical options, or authorize ordinary local branches, worktrees, commits, tests, documentation, or retries.
 
 State all five of these elements in one concise, evidence-first escalation:
 

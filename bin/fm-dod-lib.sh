@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Single owner of a ship task's mode-specific "Definition of done" block.
-# Sourced by bin/fm-brief.sh, which renders it into a generated ship brief, and by
-# bin/fm-promote.sh, which renders it into the ship instructions a promoted scout
-# receives. Both paths must hand the worker the same contract: a promoted
+# Single owner of the shared worker autonomy contract and a ship task's
+# mode-specific "Definition of done" block.
+# Sourced by bin/fm-brief.sh, which renders the autonomy contract into every
+# worker brief and the Definition of done into ship briefs, and by
+# bin/fm-promote.sh, which renders both into the ship instructions a promoted
+# scout receives. Both paths must hand the worker the same contract: a promoted
 # no-mistakes worker that never received the ask-user escalation rule or the
 # `--yes` ban is the exact delivery hole this single owner exists to close.
 # fm_dod_block <no-mistakes|direct-PR|local-only> <task-id> prints the block on
@@ -187,6 +189,21 @@ fm_ask_user_escalation_block() {  # <data-dir> <task-id>
    For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to \`$data/$id/nm-<run>-findings.txt\`, then report the gate with
    \`needs-decision [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=$data/$id/nm-<run>-findings.txt\`
    naming every ask-user finding id from that gate. The status line only points at the file; it never restates or summarizes a finding's content.
+EOF
+}
+
+# The worker brief is a generated interface, so this short pointer makes the
+# autonomy default visible even when the worker has not loaded the full
+# ask-user-authority skill. That skill owns the complete decision procedure.
+fm_worker_autonomy_block() {
+  cat <<'EOF'
+# Autonomous execution
+Routine technical choices are yours to make without waiting for the captain.
+Choose the smallest reversible implementation, try a reasonable alternative when the first path is blocked, run the relevant checks, and record the rationale in your final result.
+Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes, or other implementation details.
+Ordinary internal architecture stays autonomous; escalate an architecture choice only when it would expand or alter the accepted contract. Repeated corrections escalate only when they accrete a questionable abstraction that would expand or alter that contract, not merely because the work is difficult or takes multiple rounds.
+Escalate only a genuinely ambiguous product or requirement choice, or a material architecture choice, when it would materially expand or alter the accepted contract and accepted intent does not settle it. Also escalate a missing safe default that changes user-visible behavior, a destructive or irreversible action, a genuinely security-sensitive action, a missing credential or access grant, or an external blocker you cannot clear.
+When escalation is genuinely required, load the `ask-user-authority` skill and report the concrete work already attempted, the exact remaining choice, the recommended default, and the consequence of each option.
 EOF
 }
 
