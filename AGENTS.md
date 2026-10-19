@@ -305,7 +305,7 @@ If established evidence already answers an informational question, relay it with
 When a captain asks to inspect work and finalize, complete, fix, or ship it, treat that as implementation intent: inspect the relevant code, make the smallest reversible changes, validate them, and report the outcome instead of returning research alone.
 Ask one concise implementation question only when no safe implementation objective can be inferred or the requested action requires captain authority under `ask-user-authority`.
 Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
-A diagnostic request, report, or recommendation is evidence rather than implementation authorization only when the captain did not also request a fix or outcome.
+A diagnostic request, report, recommendation, or implementation-ready finding alone is evidence, not authorization to change code; an explicit captain request to fix, complete, finalize, or ship is implementation intent.
 Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.

@@ -424,39 +424,72 @@ test_ask_user_escalation_format() {
   pass "fm-brief.sh: no-mistakes ask-user findings use one event plus a verbatim snapshot"
 }
 
-test_autonomous_execution_contract_is_in_every_worker_brief() {
-  local home kind id brief
-  home="$TMP_ROOT/autonomous-execution-home"
-  mkdir -p "$home/data"
+assert_autonomous_execution_contract() {
+  local kind=$1 brief=$2
+  assert_grep '# Autonomous execution' "$brief" \
+    "$kind brief omitted the autonomous execution contract"
+  assert_grep 'Routine technical choices are yours to make without waiting for the captain.' "$brief" \
+    "$kind brief still frames routine technical choices as captain work"
+  assert_grep 'Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes' "$brief" \
+    "$kind brief omitted the no-churn technical-choice rule"
+  assert_grep 'Escalate only a genuinely ambiguous product or requirement choice, or a material architecture choice' "$brief" \
+    "$kind brief omitted the narrow escalation boundary"
+  assert_grep 'when it would materially expand or alter the accepted contract and accepted intent does not settle it' "$brief" \
+    "$kind brief omitted the architecture expansion condition"
+  assert_grep 'Ordinary internal architecture stays autonomous' "$brief" \
+    "$kind brief treated ordinary architecture as a captain gate"
+  assert_grep 'Repeated corrections escalate only when they accrete a questionable abstraction' "$brief" \
+    "$kind brief treated technical difficulty as a captain gate"
+  assert_grep 'load the `ask-user-authority` skill' "$brief" \
+    "$kind brief omitted the decision-policy owner"
+}
 
-  for kind in scout ship; do
+test_autonomous_execution_contract_is_in_every_worker_brief() {
+  local home kind id brief content meta
+  home="$TMP_ROOT/autonomous-execution-home"
+  mkdir -p "$home/data" "$home/state"
+
+  for kind in scout ship secondmate; do
     id="brief-autonomy-$kind"
-    if [ "$kind" = scout ]; then
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
-    else
-      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1
-    fi
-    brief="$home/data/$id/brief.md"
-    assert_grep '# Autonomous execution' "$brief" \
-      "$kind brief omitted the autonomous execution contract"
-    assert_grep 'Routine technical choices are yours to make without waiting for the captain.' "$brief" \
-      "$kind brief still frames routine technical choices as captain work"
-    assert_grep 'Do not ask the captain to choose between equivalent libraries, APIs, tests, refactors, branches, commits, documentation changes' "$brief" \
-      "$kind brief omitted the no-churn technical-choice rule"
-    assert_grep 'Escalate only a genuinely ambiguous product or requirement choice, or a material architecture choice' "$brief" \
-      "$kind brief omitted the narrow escalation boundary"
-    assert_grep 'when it would materially expand or alter the accepted contract and accepted intent does not settle it' "$brief" \
-      "$kind brief omitted the architecture expansion condition"
-    assert_grep 'Ordinary internal architecture stays autonomous' "$brief" \
-      "$kind brief treated ordinary architecture as a captain gate"
-    assert_grep 'Repeated corrections escalate only when they accrete a questionable abstraction' "$brief" \
-      "$kind brief treated technical difficulty as a captain gate"
-    assert_grep 'load the `ask-user-authority` skill' "$brief" \
-      "$kind brief omitted the decision-policy owner"
-    assert_grep 'only for the exceptional decisions listed in the Autonomous execution section' "$brief" \
-      "$kind brief retained the broad needs-decision trigger"
+    case "$kind" in
+      scout)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+        brief="$home/data/$id/brief.md"
+        ;;
+      ship)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only >/dev/null 2>&1
+        brief="$home/data/$id/brief.md"
+        ;;
+      secondmate)
+        FM_HOME="$home" FM_SECONDMATE_CHARTER='Handle sample work.' \
+          "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
+        brief="$home/data/$id/brief.md"
+        ;;
+    esac
+    assert_autonomous_execution_contract "$kind" "$brief"
+    case "$kind" in
+      scout|ship)
+        assert_grep 'only for the exceptional decisions listed in the Autonomous execution section' "$brief" \
+          "$kind brief retained the broad needs-decision trigger"
+        ;;
+    esac
   done
-  pass "fm-brief.sh: worker briefs default to autonomous technical execution"
+
+  id=brief-autonomy-promoted
+  meta="$home/state/$id.meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  content=$(cat "$brief")
+  content=${content//'{TASK}'/Promote this implementation.}
+  content=${content//'{FIRSTMATE_SPEC}'/Preserve the accepted behavior.}
+  printf '%s\n' "$content" > "$brief"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$home/state" \
+    "$ROOT/bin/fm-promote.sh" "$id" --mode no-mistakes --yolo off >/dev/null 2>&1
+  brief="$home/data/$id/ship-instructions.md"
+  assert_autonomous_execution_contract promoted "$brief"
+
+  pass "fm-brief.sh: all worker instruction paths default to autonomous technical execution"
 }
 
 test_ship_project_memory_wording() {
